@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => {
   return {
     // Use subpath when deploying to GitHub Pages for this repo
     base: isPages ? '/liner-cementing-job-calculator/' : '/',
+    build: {
+      sourcemap: false,
+    },
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),

@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useCallback, FC, ChangeEvent } from 'react';
 import { Download, Calculator, Upload, Drill, FlaskConical, CircleChevronUp, CircleChevronDown, ClipboardList, Info, X, MapPin, Sparkles, MessageSquareMore, ShieldAlert, LoaderCircle, TrendingUp, LocateFixed, Bot, BarChart2, CheckCircle2, AlertTriangle, LayoutDashboard, Table, BrainCircuit } from 'lucide-react';
 import type { 
@@ -185,7 +187,7 @@ const DataRow: FC<DataRowProps> = ({ label, value, unit, className }) => (
 // Main App Component
 const App: FC = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('well-config');
-    const [resultsView, setResultsView] = useState<'dashboard' | 'details' | 'ai' | 'cement'>('dashboard');
+    const [resultsView, setResultsView] = useState<'dashboard' | 'details' | 'ai'>('dashboard');
     const [dpConfig, setDpConfig] = useState<'single' | 'dual'>('dual');
     
     // New job info state
@@ -575,7 +577,7 @@ const App: FC = () => {
     const handleProcessSurveyData = () => {
         const lines = pastedSurveyText.trim().split('\n');
         const parsedData = lines.map(line => {
-            const values = line.trim().split(/[\s,]+/);
+            const values = line.trim().split(/[\s,	]+/);
             return [values[0] || '0', values[1] || '0', values[2] || '0'] as SurveyRow;
         }).filter(row => row.length === 3 && row.every(val => !isNaN(parseFloat(val))));
         
@@ -663,9 +665,9 @@ setIsAssessingRisk(false);
         <div className="flex items-center justify-between p-2">
             <span className="text-slate-700">{label}</span>
             <div className="flex items-center space-x-2">
-                <button onClick={() => setCount(Math.max(0, count - 1))} aria-label={`Decrease ${label}`} title={`Decrease ${label}`} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition-colors"><CircleChevronDown size={20} /></button>
+                <button onClick={() => setCount(Math.max(0, count - 1))} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition-colors"><CircleChevronDown size={20} /></button>
                 <span className="font-bold w-4 text-center">{count}</span>
-                <button onClick={() => setCount(count + 1)} aria-label={`Increase ${label}`} title={`Increase ${label}`} className="p-1 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors"><CircleChevronUp size={20} /></button>
+                <button onClick={() => setCount(count + 1)} className="p-1 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors"><CircleChevronUp size={20} /></button>
             </div>
         </div>
     );
@@ -684,55 +686,6 @@ setIsAssessingRisk(false);
             )) : <p className="text-slate-500 text-sm">No fluids configured.</p>}
         </div>
     );
-
-    // Cement Force Table Renderer (reusable)
-    const CementForceTable: FC = () => {
-        if (!calculations?.cementForces) {
-            return <div className="text-slate-500 text-sm">Run calculation to generate cement force table.</div>;
-        }
-        const cf = calculations.cementForces;
-        return (
-            <div className="w-full overflow-x-auto">
-                <div className="min-w-[1000px]">
-                    <table className="w-full text-sm text-left text-slate-700">
-                        <thead className="text-xs uppercase bg-slate-200">
-                            <tr>
-                                <th className="px-4 py-2">Fluid</th>
-                                <th className="px-4 py-2">Annulus PPG</th>
-                                <th className="px-4 py-2">Inside PPG</th>
-                                <th className="px-4 py-2">ΔTVD (ft)</th>
-                                <th className="px-4 py-2">Direction</th>
-                                <th className="px-4 py-2">Force (lbs)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {cf.table.map((row, idx) => (
-                                <tr key={`${row.fluid}-${idx}`} className="bg-white border-b">
-                                    <td className="px-4 py-2 whitespace-nowrap">{row.fluid}</td>
-                                    <td className="px-4 py-2">{row.annulusPpg.toFixed(2)}</td>
-                                    <td className="px-4 py-2">{row.insidePpg.toFixed(2)}</td>
-                                    <td className="px-4 py-2">{row.deltaTvd.toFixed(0)}</td>
-                                    <td className={`px-4 py-2 font-semibold ${row.direction === 'Down' ? 'text-red-600' : 'text-green-600'}`}>{row.direction}</td>
-                                    <td className="px-4 py-2">{row.force.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-                    <CalculationCard title="CEMENT FORCE & HYDROSTATIC SUMMARY">
-                        <DataRow label="Original Buoyed Weight" value={cf.originalBuoyedWeight} unit="lbs" />
-                        <DataRow label="Cement Force Change (±)" value={cf.totalForceChange} unit="lbs" />
-                        <DataRow label="Final Buoyed Weight" value={cf.finalBuoyedWeight} unit="lbs" />
-                    </CalculationCard>
-                    <CalculationCard title="U-TUBE / SHOE PRESSURE">
-                        <DataRow label="Total U-Tube ΔP" value={cf.totalUTubePsi} unit="psi" />
-                        <DataRow label="Shoe Differential (approx)" value={cf.shoeDifferentialPsi} unit="psi" />
-                    </CalculationCard>
-                </div>
-            </div>
-        );
-    };
 
     const renderContent = () => {
         switch (activeTab) {
@@ -786,10 +739,6 @@ setIsAssessingRisk(false);
                                 <label className="block"><span className="text-sm font-medium text-slate-600">Cement Thickening Time (min)</span><input type="number" value={holeOverlap.cementThickeningTime} onChange={(e) => setHoleOverlap({ ...holeOverlap, cementThickeningTime: e.target.value })} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" /></label>
                                 <label className="block col-span-2"><span className="text-sm font-medium text-slate-600">Rig Capacity (lbs)</span><input type="number" value={holeOverlap.rigCapacity} onChange={(e) => setHoleOverlap({ ...holeOverlap, rigCapacity: e.target.value })} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" /></label>
                             </div>
-                            <div className="mt-6">
-                                <h4 className="text-base font-semibold text-slate-700 mb-3">CEMENT FORCE & HYDROSTATIC TABLE</h4>
-                                <CementForceTable />
-                            </div>
                         </div>
                     </div>
                 );
@@ -834,10 +783,10 @@ setIsAssessingRisk(false);
                     </div>
                 );
             case 'results': {
-                const ResultTabButton: FC<{label: string; value: 'dashboard' | 'details' | 'ai' | 'cement'; icon: React.ReactNode; view: typeof resultsView; setView: typeof setResultsView}> = ({ label, value, icon, view, setView }) => (
+                const ResultTabButton: FC<{label: string; icon: React.ReactNode; view: typeof resultsView; setView: typeof setResultsView}> = ({ label, icon, view, setView }) => (
                      <button
-                        onClick={() => setView(value)}
-                        className={`flex items-center space-x-2 px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${resultsView === value ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                        onClick={() => setView(label.toLowerCase() as any)}
+                        className={`flex items-center space-x-2 px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${resultsView === label.toLowerCase() ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                     >
                         {icon}
                         <span>{label}</span>
@@ -848,12 +797,11 @@ setIsAssessingRisk(false);
                     <div className="p-6 animate-fade-in">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-2xl font-bold text-slate-800">Results</h2>
-                                      <div className="flex items-center space-x-2 p-1 rounded-full bg-slate-100 border">
-                                          <ResultTabButton label="Dashboard" value="dashboard" icon={<LayoutDashboard size={16}/>} view={resultsView} setView={setResultsView} />
-                                          <ResultTabButton label="Details" value="details" icon={<Table size={16}/>} view={resultsView} setView={setResultsView} />
-                                          <ResultTabButton label="Cement Table" value="cement" icon={<Table size={16}/>} view={resultsView} setView={setResultsView} />
-                                          <ResultTabButton label="AI" value="ai" icon={<BrainCircuit size={16}/>} view={resultsView} setView={setResultsView} />
-                                      </div>
+                             <div className="flex items-center space-x-2 p-1 rounded-full bg-slate-100 border">
+                                <ResultTabButton label="Dashboard" icon={<LayoutDashboard size={16}/>} view={resultsView} setView={setResultsView} />
+                                <ResultTabButton label="Details" icon={<Table size={16}/>} view={resultsView} setView={setResultsView} />
+                                <ResultTabButton label="AI" icon={<BrainCircuit size={16}/>} view={resultsView} setView={setResultsView} />
+                             </div>
                         </div>
 
                         {!calculations ? (<div className="text-center py-10 bg-slate-50 rounded-lg"><p className="text-slate-500">Press "Run Calculation" to see results here.</p></div>) :
@@ -950,13 +898,6 @@ setIsAssessingRisk(false);
                                 </div>
                             )}
 
-                            {resultsView === 'cement' && (
-                                <div className="animate-fade-in">
-                                    <h3 className="text-lg font-semibold text-slate-800 mb-3">CEMENT FORCE & HYDROSTATIC TABLE</h3>
-                                    <CementForceTable />
-                                </div>
-                            )}
-
                              {resultsView === 'ai' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
                                     <div className="space-y-4">
@@ -999,7 +940,7 @@ setIsAssessingRisk(false);
                                             return (
                                                 <div key={key}>
                                                     <h4 className="font-semibold text-slate-700">{heading}</h4>
-                                                    <div dangerouslySetInnerHTML={{ __html: (value as string).replace(/\[i\]/g, `<sup class="text-cyan-600 font-bold">[i]</sup>`) }} />
+                                                    <div dangerouslySetInnerHTML={{ __html: value.replace(/\[i\]/g, `<sup class="text-cyan-600 font-bold">[i]</sup>`) }} />
                                                 </div>
                                             );
                                         })}

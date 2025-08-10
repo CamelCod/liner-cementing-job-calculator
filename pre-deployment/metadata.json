@@ -1,5 +1,6 @@
 {
   "name": "Liner Cementing Job Calculator",
   "description": "A comprehensive web application for drilling engineers to calculate parameters for liner cementing jobs, visualize the wellbore, and leverage AI for procedure generation and risk assessment.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "prompt": ""
 }

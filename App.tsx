@@ -630,10 +630,45 @@ setIsAssessingRisk(false);
             mudWeight: parseFloat(mud.ppg),
             casingFriction: parseFloat(holeOverlap.casingFrictionFactor),
             openHoleFriction: parseFloat(holeOverlap.openHoleFrictionFactor),
-            casingShoeMd: pCasing.md
+            casingShoeMd: pCasing.md,
+            rotate: true,
+            targetSetdown: parseFloat(setdownForce) || 15000,
+            segmentFt: 25,
         });
-        
-        setCalculations(prev => prev ? ({ ...prev, torqueDragResult: result }) : null);
+        // Build plots from result & survey for Results dashboard
+        const tdHookloadPlot: PlotConfig = {
+            id: 'td-hookload', type: 'line', title: 'T&D Hookload vs Depth', x_field: 'depth',
+            y_fields: [
+                { key: 'hookload_out', name: 'Hookload (tension)', color: '#0ea5e9' },
+                { key: 'drag', name: 'Drag (Δ tension)', color: '#f97316' }
+            ],
+            series: result.plotData,
+            options: { xlabel: 'MD (ft)', ylabel: 'Force (lbs)' }
+        };
+        const tdTorquePlot: PlotConfig = {
+            id: 'td-torque', type: 'line', title: 'T&D Torque vs Depth', x_field: 'depth',
+            y_fields: [ { key: 'torque', name: 'Torque', color: '#10b981' } ],
+            series: result.plotData,
+            options: { xlabel: 'MD (ft)', ylabel: 'Torque (ft-lbs)' }
+        };
+        const wellPathPlot: PlotConfig = {
+            id: 'well-path', type: 'line', title: 'Well Path (Inclination)', x_field: 'md',
+            y_fields: [ { key: 'inc', name: 'Inclination', color: '#6366f1' } ],
+            series: surveyData.map(r => ({ md: parseFloat(r[0]), inc: parseFloat(r[2]) })).filter(p => Number.isFinite(p.md) && Number.isFinite(p.inc)),
+            options: { xlabel: 'MD (ft)', ylabel: 'Inc (°)' }
+        };
+
+        setCalculations(prev => prev ? ({
+            ...prev,
+            torqueDragResult: result,
+            plots: [
+                // keep prior plots, but replace any existing T&D or well-path plots by id
+                ...((prev.plots || []).filter(p => !['td-hookload', 'td-torque', 'well-path'].includes(p.id))),
+                tdHookloadPlot,
+                tdTorquePlot,
+                wellPathPlot
+            ]
+        }) : null);
         setTorqueDragResultText(result.summary);
         setActiveTab('results');
     };
@@ -924,6 +959,9 @@ setIsAssessingRisk(false);
                                     <div className="space-y-4">
                                         {calculations.plots.filter(p => p.id === 'force-analysis').map(p => <Chart key={p.id} plot={p} />)}
                                         {calculations.plots.filter(p => p.id === 'weight-comparison').map(p => <Chart key={p.id} plot={p} />)}
+                                        {calculations.plots.filter(p => p.id === 'td-hookload').map(p => <Chart key={p.id} plot={p} />)}
+                                        {calculations.plots.filter(p => p.id === 'td-torque').map(p => <Chart key={p.id} plot={p} />)}
+                                        {calculations.plots.filter(p => p.id === 'well-path').map(p => <Chart key={p.id} plot={p} />)}
                                         <FluidPieChart mud={mud} spacers={spacers} cements={cements} displacements={displacements} />
                                     </div>
                                 </div>

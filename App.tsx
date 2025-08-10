@@ -9,6 +9,7 @@ import { calculateTorqueDrag } from './services/torqueDragService';
 import WellSchematic from './components/WellSchematic';
 import Modal from './components/Modal';
 import Chart from './components/Chart';
+import FluidPieChart from './components/FluidPieChart';
 
 
 // --- Data Tables for Casing, Liner, and Drill Pipe ---
@@ -923,6 +924,7 @@ setIsAssessingRisk(false);
                                     <div className="space-y-4">
                                         {calculations.plots.filter(p => p.id === 'force-analysis').map(p => <Chart key={p.id} plot={p} />)}
                                         {calculations.plots.filter(p => p.id === 'weight-comparison').map(p => <Chart key={p.id} plot={p} />)}
+                                        <FluidPieChart mud={mud} spacers={spacers} cements={cements} displacements={displacements} />
                                     </div>
                                 </div>
                             )}

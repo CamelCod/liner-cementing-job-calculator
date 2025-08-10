@@ -164,3 +164,33 @@ export interface DeproReport {
 
 
 export type ActiveTab = 'well-config' | 'fluid-config' | 'fluids' | 'survey' | 'results' | 'advanced';
+
+// --- Cement Force & Hydrostatic Analysis ---
+export type CementForceDirection = 'D' | 'U';
+
+export interface CementForceStep {
+  fluid1: string;
+  ppg1: number;
+  fluid2: string;
+  ppg2: number;
+  length_ft: number;
+  area_in2: number;
+  direction: CementForceDirection;
+}
+
+export interface CementForceComputedStep extends CementForceStep {
+  deltaPpg: number;
+  psi: number; // signed based on density diff
+  force_lbf: number; // absolute magnitude
+  forceSigned_lbf: number; // sign based on direction (D=+, U=-)
+}
+
+export interface CementForceSummary {
+  originalHookLoad_lbf: number;
+  totalDown_lbf: number;
+  totalUp_lbf: number;
+  finalHookLoad_lbf: number;
+  uTubePsiTotal: number;
+  steps: CementForceComputedStep[];
+  shoeDifferentialPsi?: number; // optional, if computed separately
+}

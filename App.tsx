@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, FC, ChangeEvent } from 'react';
-import { Download, Calculator, Upload, Drill, FlaskConical, CircleChevronUp, CircleChevronDown, ClipboardList, Info, X, MapPin, Sparkles, MessageSquareMore, ShieldAlert, LoaderCircle, TrendingUp, LocateFixed, Bot, BarChart2 } from 'lucide-react';
-import type { PipeConfig, Fluid, MudConfig, SurveyRow, Calculations, ActiveTab, KeyVolumeEntry, Depth, HoleOverlapConfig, ParsedPipeConfig, PlotConfig, TorqueDragResult, DeproReport } from './types';
+import { Download, Calculator, Upload, Drill, FlaskConical, CircleChevronUp, CircleChevronDown, ClipboardList, MapPin, Sparkles, MessageSquareMore, ShieldAlert, LoaderCircle, TrendingUp, LocateFixed, Bot, BarChart2 } from 'lucide-react';
+import type { PipeConfig, Fluid, MudConfig, SurveyRow, Calculations, ActiveTab, KeyVolumeEntry, Depth, HoleOverlapConfig, ParsedPipeConfig, PlotConfig, DeproReport, CementForceStep, CementForceSummary, CementForceComputedStep } from './types';
 import * as geminiService from './services/geminiService';
 import { calculateTorqueDrag } from './services/torqueDragService';
 import WellSchematic from './components/WellSchematic';
@@ -223,6 +223,10 @@ const App: FC = () => {
     const [isAnalyzingDepro, setIsAnalyzingDepro] = useState(false);
     const [deproAnalysisResult, setDeproAnalysisResult] = useState<DeproReport | null>(null);
 
+    // Cement Force & Hydrostatic Analysis state
+    const [cementSteps, setCementSteps] = useState<CementForceStep[]>([]);
+    const [cementSummary, setCementSummary] = useState<CementForceSummary | null>(null);
+
 
     const findTvdFromMd = useCallback((mdStr: string | undefined): string => {
         const md = parseFloat(mdStr || '0');
@@ -323,6 +327,91 @@ const App: FC = () => {
             tvd: parseFloat(pipe.tvd || '0'),
         };
     };
+
+    // Helpers for Cement Force
+    const areaCircleIn2 = (diameterIn: number) => (Math.PI / 4) * Math.pow(diameterIn, 2);
+
+    const buildCementForceSteps = useCallback((): CementForceStep[] => {
+        // Build a reasonable default from current fluids and geometry
+        const pLiner = parsePipe(liner, dpConfig);
+        const pCasing = parsePipe(casing, dpConfig);
+        const pMudWeight = parseFloat(mud.ppg || '0');
+        const annBblPerFt = bblPerFt(pLiner.od, parseFloat(holeOverlap.openHoleId || '0'));
+        const linerIntBblPerFt = bblPerFt(pLiner.id);
+        const defaultArea = areaCircleIn2(pLiner.od); // Use liner OD area, aligns with many spreadsheets
+
+        const steps: CementForceStep[] = [];
+
+        // Spacers inside liner vs base mud
+        spacers.forEach(sp => {
+            const vol = parseFloat(sp.volume || '0');
+            const length_ft = linerIntBblPerFt > 0 ? vol / linerIntBblPerFt : 0;
+            steps.push({
+                fluid1: sp.label || 'Spacer',
+                ppg1: parseFloat(sp.ppg || '0'),
+                fluid2: 'Mud',
+                ppg2: pMudWeight,
+                length_ft,
+                area_in2: defaultArea,
+                direction: (parseFloat(sp.ppg || '0') >= pMudWeight) ? 'D' as const : 'U' as const,
+            });
+        });
+
+        // Cements in annulus vs mud
+        cements.forEach(cem => {
+            const vol = parseFloat(cem.volume || '0');
+            const length_ft = annBblPerFt > 0 ? vol / annBblPerFt : 0;
+            steps.push({
+                fluid1: cem.label || 'Cement',
+                ppg1: parseFloat(cem.ppg || '0'),
+                fluid2: 'Mud',
+                ppg2: pMudWeight,
+                length_ft,
+                area_in2: defaultArea,
+                direction: (parseFloat(cem.ppg || '0') >= pMudWeight) ? 'D' as const : 'U' as const,
+            });
+        });
+
+        // Displacements inside liner vs mud
+        displacements.forEach(df => {
+            const vol = parseFloat(df.volume || '0');
+            const length_ft = linerIntBblPerFt > 0 ? vol / linerIntBblPerFt : 0;
+            steps.push({
+                fluid1: df.label || 'Displ.',
+                ppg1: parseFloat(df.ppg || '0'),
+                fluid2: 'Mud',
+                ppg2: pMudWeight,
+                length_ft,
+                area_in2: defaultArea,
+                direction: (parseFloat(df.ppg || '0') >= pMudWeight) ? 'D' as const : 'U' as const,
+            });
+        });
+
+        // Filter out any NaN/zero-length steps
+        return steps.filter(s => s.length_ft > 0 && !isNaN(s.ppg1) && !isNaN(s.ppg2));
+    }, [liner, casing, mud.ppg, spacers, cements, displacements, dpConfig, holeOverlap.openHoleId]);
+
+    const computeCementForceSummary = useCallback((steps: CementForceStep[], originalHookLoad: number): CementForceSummary => {
+        const computed = steps.map<CementForceComputedStep>(s => {
+            const deltaPpg = (s.ppg1 - s.ppg2);
+            const psi = deltaPpg * 0.052 * s.length_ft;
+            const force = Math.abs(psi * s.area_in2);
+            const forceSigned = s.direction === 'D' ? force : -force;
+            return { ...s, deltaPpg, psi, force_lbf: force, forceSigned_lbf: forceSigned };
+        });
+        const totalDown = computed.filter(s => s.direction === 'D').reduce((a, b) => a + b.force_lbf, 0);
+        const totalUp = computed.filter(s => s.direction === 'U').reduce((a, b) => a + b.force_lbf, 0);
+        const uTubePsiTotal = computed.reduce((a, b) => a + b.psi, 0);
+        const finalHookLoad = originalHookLoad + totalDown - totalUp;
+        return {
+            originalHookLoad_lbf: originalHookLoad,
+            totalDown_lbf: totalDown,
+            totalUp_lbf: totalUp,
+            finalHookLoad_lbf: finalHookLoad,
+            uTubePsiTotal,
+            steps: computed,
+        };
+    }, []);
 
     const runDynamicCalculations = useCallback(() => {
         // Parse all inputs to numbers
@@ -458,14 +547,32 @@ const App: FC = () => {
             }
         ];
 
-        setCalculations({ keyVolumes, detailedVolumes, stretchWeight, pressureForce, lengthsDepths, plots, torqueDragResult: null });
+        const nextCalcs = { keyVolumes, detailedVolumes, stretchWeight, pressureForce, lengthsDepths, plots, torqueDragResult: null } as const;
+        setCalculations(nextCalcs);
+        // Auto-build cement steps and compute summary using the latest hook load
+        try {
+            const steps = buildCementForceSteps();
+            setCementSteps(steps);
+            const sum = computeCementForceSummary(steps, stretchWeight.hookLoad);
+            setCementSummary(sum);
+        } catch {
+            // ignore, UI can still let user build manually
+        }
         setActiveTab('results');
     }, [casing, liner, dp1, dp2, holeOverlap, mud, totalDepth, dpConfig, landingCollar]);
+
+    // Recompute cement summary whenever steps change
+    useEffect(() => {
+        if (!calculations) return;
+        if (!cementSteps || cementSteps.length === 0) { setCementSummary(null); return; }
+        const original = calculations.stretchWeight.hookLoad || 0;
+        setCementSummary(computeCementForceSummary(cementSteps, original));
+    }, [cementSteps, calculations, computeCementForceSummary]);
 
     const handleProcessSurveyData = () => {
         const lines = pastedSurveyText.trim().split('\n');
         const parsedData = lines.map(line => {
-            const values = line.trim().split(/[\s,	]+/);
+            const values = line.trim().split(/[\s,\t]+/);
             return [values[0] || '0', values[1] || '0', values[2] || '0'] as SurveyRow;
         }).filter(row => row.length === 3 && row.every(val => !isNaN(parseFloat(val))));
         
@@ -553,9 +660,9 @@ const App: FC = () => {
         <div className="flex items-center justify-between p-2">
             <span className="text-slate-700">{label}</span>
             <div className="flex items-center space-x-2">
-                <button onClick={() => setCount(Math.max(0, count - 1))} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition-colors"><CircleChevronDown size={20} /></button>
+                <button aria-label={`decrease ${label}`} onClick={() => setCount(Math.max(0, count - 1))} className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition-colors"><CircleChevronDown size={20} /></button>
                 <span className="font-bold w-4 text-center">{count}</span>
-                <button onClick={() => setCount(count + 1)} className="p-1 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors"><CircleChevronUp size={20} /></button>
+                <button aria-label={`increase ${label}`} onClick={() => setCount(count + 1)} className="p-1 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors"><CircleChevronUp size={20} /></button>
             </div>
         </div>
     );
@@ -564,7 +671,7 @@ const App: FC = () => {
         <div className="bg-slate-50 p-6 rounded-xl shadow-inner flex-1 min-w-[300px]">
             <h3 className="text-lg font-semibold mb-4 text-slate-700">{label}</h3>
             {fluids.length > 0 ? fluids.map((fluid, index) => (
-                <div key={index} className="p-3 bg-slate-100 rounded-lg mb-2">
+                <div key={`${fluid.label}-${index}`} className="p-3 bg-slate-100 rounded-lg mb-2">
                     <h4 className="font-medium text-slate-800">{fluid.label}</h4>
                     <div className="grid grid-cols-2 gap-4 mt-2">
                         <label className="block relative"><span className="text-sm font-medium text-slate-600">Volume (bbl)</span><input type="number" value={fluid.volume} onChange={(e) => setFluids(prev => prev.map((f, i) => i === index ? { ...f, volume: e.target.value } : f))} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" /></label>
@@ -655,7 +762,7 @@ const App: FC = () => {
                             <button onClick={handleProcessSurveyData} className="w-full flex items-center justify-center p-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors shadow-md"><Upload className="mr-2" size={20} /> Process Data</button>
                         </div>
                         {surveyData.length > 0 && (
-                            <div className="mt-4 p-4 bg-slate-100 rounded-lg max-h-60 overflow-y-auto"><h3 className="font-semibold text-slate-700 mb-2">Survey Data Preview ({surveyData.length} rows)</h3><table className="w-full text-sm text-left text-slate-700"><thead className="text-xs text-slate-700 uppercase bg-slate-200 sticky top-0"><tr><th scope="col" className="px-6 py-3">MD</th><th scope="col" className="px-6 py-3">TVD</th><th scope="col" className="px-6 py-3">Inc.</th></tr></thead><tbody>{surveyData.map((row, index) => (<tr key={index} className="bg-white border-b"><td className="px-6 py-4">{row[0]}</td><td className="px-6 py-4">{row[1]}</td><td className="px-6 py-4">{row[2]}</td></tr>))}</tbody></table></div>
+                            <div className="mt-4 p-4 bg-slate-100 rounded-lg max-h-60 overflow-y-auto"><h3 className="font-semibold text-slate-700 mb-2">Survey Data Preview ({surveyData.length} rows)</h3><table className="w-full text-sm text-left text-slate-700"><thead className="text-xs text-slate-700 uppercase bg-slate-200 sticky top-0"><tr><th scope="col" className="px-6 py-3">MD</th><th scope="col" className="px-6 py-3">TVD</th><th scope="col" className="px-6 py-3">Inc.</th></tr></thead><tbody>{surveyData.map((row) => { const key = `${row[0]}-${row[1]}-${row[2]}`; return (<tr key={key} className="bg-white border-b"><td className="px-6 py-4">{row[0]}</td><td className="px-6 py-4">{row[1]}</td><td className="px-6 py-4">{row[2]}</td></tr>); })}</tbody></table></div>
                         )}
                     </div>
                 );
@@ -778,6 +885,62 @@ const App: FC = () => {
                                         <DataRow label="Full Liner Volume" value={calculations.detailedVolumes.fullLiner} unit="bbl" />
                                         <DataRow label="Volume to Pump Plug" value={calculations.detailedVolumes.volumeToPumpPlug} unit="bbl" />
                                     </CalculationCard>
+                                    
+                                    <CalculationCard title="CEMENT FORCE & Hydrostatic Analysis">
+                                        <div className="mb-2 flex items-center justify-between">
+                                            <button onClick={() => setCementSteps(buildCementForceSteps())} className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs">Rebuild from Fluids</button>
+                                        </div>
+                                        {cementSummary ? (
+                                            <div className="space-y-3">
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-xs text-left text-slate-700">
+                                                        <thead className="text-xs uppercase bg-slate-200 sticky top-0">
+                                                            <tr>
+                                                                <th className="px-2 py-1">Fluid 1</th>
+                                                                <th className="px-2 py-1">ρ1</th>
+                                                                <th className="px-2 py-1">Fluid 2</th>
+                                                                <th className="px-2 py-1">ρ2</th>
+                                                                <th className="px-2 py-1">Δρ</th>
+                                                                <th className="px-2 py-1">L (ft)</th>
+                                                                <th className="px-2 py-1">A (in²)</th>
+                                                                <th className="px-2 py-1">PSI</th>
+                                                                <th className="px-2 py-1">Force (lbf)</th>
+                                                                <th className="px-2 py-1">Dir</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {cementSummary.steps.map((s, idx) => (
+                                                                <tr key={`${s.fluid1}-${s.fluid2}-${idx}`} className="border-b">
+                                                                    <td className="px-2 py-1">{s.fluid1}</td>
+                                                                    <td className="px-2 py-1">{s.ppg1.toFixed(2)}</td>
+                                                                    <td className="px-2 py-1">{s.fluid2}</td>
+                                                                    <td className="px-2 py-1">{s.ppg2.toFixed(2)}</td>
+                                                                    <td className="px-2 py-1">{s.deltaPpg.toFixed(2)}</td>
+                                                                    <td className="px-2 py-1">{s.length_ft.toFixed(1)}</td>
+                                                                    <td className="px-2 py-1">{s.area_in2.toFixed(2)}</td>
+                                                                    <td className="px-2 py-1">{s.psi.toFixed(1)}</td>
+                                                                    <td className="px-2 py-1">{s.forceSigned_lbf.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                                                    <td className="px-2 py-1">{s.direction}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <DataRow label="Original Hook Load" value={cementSummary.originalHookLoad_lbf} unit="lbf" />
+                                                    <DataRow label="Total Down Force (D)" value={cementSummary.totalDown_lbf} unit="lbf" />
+                                                    <DataRow label="Total Up Force (U)" value={-cementSummary.totalUp_lbf} unit="lbf" />
+                                                    <DataRow label="Final Hook Load" value={cementSummary.finalHookLoad_lbf} unit="lbf" />
+                                                    <DataRow label="U-tube Pressure Total" value={cementSummary.uTubePsiTotal} unit="psi" />
+                                                    {typeof cementSummary.shoeDifferentialPsi === 'number' && (
+                                                        <DataRow label="Differential @ Shoe" value={cementSummary.shoeDifferentialPsi} unit="psi" />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="text-slate-500">Run calculation to populate cement force steps, or click "Rebuild from Fluids".</p>
+                                        )}
+                                    </CalculationCard>
                                 </div>
                             </div>
                             
@@ -816,7 +979,7 @@ const App: FC = () => {
                                             return (
                                                 <div key={key}>
                                                     <h4 className="font-semibold text-slate-700">{heading}</h4>
-                                                    <div dangerouslySetInnerHTML={{ __html: value.replace(/\[i\]/g, `<sup class="text-cyan-600 font-bold">[i]</sup>`) }} />
+                                                    <div dangerouslySetInnerHTML={{ __html: (typeof value === 'string' ? value : String(value)).replace(/\[i\]/g, `<sup class="text-cyan-600 font-bold">[i]</sup>`) }} />
                                                 </div>
                                             );
                                         })}

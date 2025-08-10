@@ -182,6 +182,10 @@ const DataRow: FC<DataRowProps> = ({ label, value, unit }) => (
 const App: FC = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('well-config');
     const [dpConfig, setDpConfig] = useState<'single' | 'dual'>('dual');
+    // Job meta & safety inputs
+    const [wellName, setWellName] = useState<string>('Well-1');
+    const [safetyFactor, setSafetyFactor] = useState<string>('1.20');
+    const [setdownForce, setSetdownForce] = useState<string>('0');
 
     const [casing, setCasing] = useState<PipeConfig>({ od: '9.625', id: '8.799', wt: '40.00', md: '5100', tvd: '5099', grade: 'P-110' });
     const [liner, setLiner] = useState<PipeConfig>({ od: '7.000', id: '6.184', wt: '29.00', md: '9280', tvd: '8463', grade: 'L-80' });
@@ -705,6 +709,23 @@ const App: FC = () => {
                             </div>
                         </div>
 
+                        <div className="bg-slate-50 p-4 rounded-xl shadow-inner">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                                <label className="block col-span-2 md:col-span-2">
+                                    <span className="text-sm font-medium text-slate-600">Well Name</span>
+                                    <input type="text" value={wellName} onChange={(e) => setWellName(e.target.value)} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" />
+                                </label>
+                                <label className="block">
+                                    <span className="text-sm font-medium text-slate-600">Safety Factor (x)</span>
+                                    <input type="number" step="0.01" value={safetyFactor} onChange={(e) => setSafetyFactor(e.target.value)} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" />
+                                </label>
+                                <label className="block">
+                                    <span className="text-sm font-medium text-slate-600">Setdown Force (lbs)</span>
+                                    <input type="number" value={setdownForce} onChange={(e) => setSetdownForce(e.target.value)} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" />
+                                </label>
+                            </div>
+                        </div>
+
                         <PipeInput label="Parent Casing" pipe={casing} setPipe={setCasing} pipeData={casingLinerData} />
                         <PipeInput label="Liner" pipe={liner} setPipe={setLiner} pipeData={casingLinerData} />
                         <PipeInput label="Drill Pipe 1" pipe={dp1} setPipe={setDp1} pipeData={drillPipeData} gradeOptions={drillPipeGrades} />
@@ -768,6 +789,64 @@ const App: FC = () => {
                 );
             case 'results': {
                 const ratHoleLength = (parseFloat(totalDepth.md) || 0) - (parseFloat(liner.md || '0'));
+                // Re-parse some geometry for derived calcs in results
+                const pCasing = parsePipe(casing, dpConfig);
+                const pLiner = parsePipe(liner, dpConfig);
+                const pDp1 = parsePipe(dp1, dpConfig);
+                const pDp2 = parsePipe(dp2, dpConfig, true);
+                const pMud = parseFloat(mud.ppg || '0');
+                const sf = parseFloat(safetyFactor || '1');
+                const setdown = parseFloat(setdownForce || '0');
+                const areaDP1 = pipeArea(pDp1.id, pDp1.od);
+                const areaDP2 = pipeArea(pDp2.id, pDp2.od);
+                const totalDpArea = areaDP1 + areaDP2;
+                // TVD at top of liner (convert MD -> TVD via survey)
+                const tolMd = (calculations?.lengthsDepths.topOfLiner ?? 0);
+                const tolTvd = parseFloat(findTvdFromMd(String(tolMd)) || '0');
+                const shoeTvd = parseFloat(liner.tvd || '0');
+                // Averages for fluids
+                const parseP = (v: string | undefined) => parseFloat(v || '');
+                const avg = (arr: number[]) => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+                const spacerPpgAvg = avg(spacers.map(s => parseP(s.ppg)).filter(n => !isNaN(n)));
+                const cementPpgAvg = avg(cements.map(c => parseP(c.ppg)).filter(n => !isNaN(n)));
+                const bf = (ppg: number) => 65.5 > 0 ? (65.5 - ppg) / 65.5 : 0;
+                const mudBF = bf(pMud);
+                const spacerBF = bf(spacerPpgAvg);
+                const cementBF = bf(cementPpgAvg);
+                // Pressures (psi)
+                const mudPressureAtTOL = pMud * 0.052 * tolTvd;
+                const mudPressureAtShoe = pMud * 0.052 * shoeTvd;
+                const cemPressureAtTOL = cementPpgAvg * 0.052 * tolTvd;
+                const cemPressureAtShoe = cementPpgAvg * 0.052 * shoeTvd;
+                // Hookloads & forces
+                const initialHook = calculations?.stretchWeight.hookLoad || 0;
+                const hookWithSF = initialHook * sf;
+                const postCementHook = cementSummary?.finalHookLoad_lbf ?? initialHook;
+                const totalDown = cementSummary?.totalDown_lbf ?? 0;
+                const totalUp = cementSummary?.totalUp_lbf ?? 0;
+                const linerBuoyed = calculations?.stretchWeight.linerBuoyedWeight || 0;
+                const netDownOnHanger = (linerBuoyed + totalDown - totalUp + setdown);
+                const netDownWithSF = netDownOnHanger * sf;
+                // Stretch calcs (use same E and lengths as in runDynamicCalculations)
+                const stretchInchesBase = calculations?.stretchWeight.stretchDueToLiner || 0; // already in inches
+                const stretchFromSetdownIn = (setdown > 0 && totalDpArea > 0) ? (((setdown * pDp1.length) / (areaDP1 * STEEL_YOUNGS_MODULUS)) + ((setdown * pDp2.length) / (areaDP2 * STEEL_YOUNGS_MODULUS))) * 12 : 0;
+                const totalStretchIn = stretchInchesBase + stretchFromSetdownIn;
+                const totalStretchFt = totalStretchIn / 12;
+                // Volumes & capacities
+                const linerCapacityBblFt = calculations?.keyVolumes.liner.bblFt || 0;
+                const dp1CapacityBblFt = calculations?.keyVolumes.dp1.bblFt || 0;
+                const dp2CapacityBblFt = (calculations?.keyVolumes.dp2.length || 0) > 0 ? (calculations?.keyVolumes.dp2.bblFt || 0) : 0;
+                const annulusVolume = calculations?.detailedVolumes.totalAnnulus || 0;
+                const stringDisplacement = calculations?.detailedVolumes.totalString || 0;
+                const requiredCementVol = annulusVolume;
+                // U-tube
+                const uTubeDiff = cementSummary?.uTubePsiTotal || 0;
+                const criticalPumpRate = calculations?.pressureForce.minPumpRate || 0;
+                // Statuses
+                const rigCap = parseFloat(holeOverlap.rigCapacity || '0');
+                const hookloadStatus = rigCap > 0 ? (postCementHook > rigCap ? 'OVER RIG CAPACITY' : `OK (${((postCementHook/rigCap)*100).toFixed(0)}% of capacity)`) : 'N/A';
+                const netForceStatus = netDownOnHanger > 0 ? 'OK (Downward)' : 'Risk of Lift-Off';
+                const stretchStatus = totalStretchFt > 0 ? `${totalStretchFt.toFixed(2)} ft` : 'N/A';
                 
                 let allPlots: PlotConfig[] = calculations?.plots || [];
                 if (calculations?.torqueDragResult) {
@@ -834,6 +913,35 @@ const App: FC = () => {
                                 </div>
                                 {/* Right Column */}
                                 <div className="space-y-6">
+                                    {/* Job Summary */}
+                                    <CalculationCard title="Job Summary">
+                                        <DataRow label="Well Name" value={wellName} unit="" />
+                                        <DataRow label="Date" value={new Date().toLocaleDateString()} unit="" />
+                                        <DataRow label="Liner Top Depth (MD)" value={calculations.lengthsDepths.topOfLiner} unit="ft" />
+                                        <DataRow label="Liner Shoe Depth (MD)" value={pLiner.md} unit="ft" />
+                                        <DataRow label="Liner Length" value={calculations.lengthsDepths.linerLength} unit="ft" />
+                                    </CalculationCard>
+
+                                    {/* Key Calculation Results */}
+                                    <CalculationCard title="Key Calculation Results">
+                                        <DataRow label="Initial Hookload" value={initialHook} unit="lbf" />
+                                        <DataRow label="Hookload with Safety Factor" value={hookWithSF} unit="lbf" />
+                                        <DataRow label="Post-Cement Hookload" value={postCementHook} unit="lbf" />
+                                        <DataRow label="Drill String Stretch" value={totalStretchIn} unit="in" />
+                                        <DataRow label="Net Force on Liner Hanger" value={netDownOnHanger} unit="lbf" />
+                                        <DataRow label="Net Force with Safety Factor" value={netDownWithSF} unit="lbf" />
+                                        <DataRow label="Required Cement Volume" value={requiredCementVol} unit="bbl" />
+                                        <DataRow label="U-Tube Pressure Differential" value={uTubeDiff} unit="psi" />
+                                        <DataRow label="Critical Pump Rate" value={criticalPumpRate} unit="bpm" />
+                                    </CalculationCard>
+
+                                    {/* Safety Status Indicators */}
+                                    <CalculationCard title="Safety Status Indicators">
+                                        <DataRow label="Hookload Status" value={hookloadStatus} unit="" />
+                                        <DataRow label="Net Force Status" value={netForceStatus} unit="" />
+                                        <DataRow label="Stretch Status" value={stretchStatus} unit="" />
+                                    </CalculationCard>
+
                                     <CalculationCard title="Key Volumes Table" className="max-h-[28rem] overflow-y-auto">
                                         <table className="w-full text-sm text-left text-slate-700">
                                             <thead className="text-xs text-slate-700 uppercase bg-slate-200 sticky top-0">
@@ -861,6 +969,17 @@ const App: FC = () => {
                                         </table>
                                     </CalculationCard>
 
+                                    {/* Buoyancy & Weight */}
+                                    <CalculationCard title="Buoyancy & Weight Calculations">
+                                        <DataRow label="Mud Buoyancy Factor" value={mudBF} unit="" />
+                                        <DataRow label="Spacer Buoyancy Factor" value={spacerBF} unit="" />
+                                        <DataRow label="Cement Buoyancy Factor" value={cementBF} unit="" />
+                                        <DataRow label="Liner Air Weight" value={calculations.stretchWeight.linerAirWeight} unit="lbs" />
+                                        <DataRow label="Liner Buoyed Weight (Mud)" value={calculations.stretchWeight.linerBuoyedWeight} unit="lbs" />
+                                        <DataRow label="Drill Pipe Air Weight" value={calculations.stretchWeight.dpAirWeight} unit="lbs" />
+                                        <DataRow label="Drill Pipe Buoyed Weight" value={calculations.stretchWeight.dpBuoyedWeight} unit="lbs" />
+                                    </CalculationCard>
+
                                     <CalculationCard title="Lengths & Depths">
                                         <DataRow label="Liner Length" value={calculations.lengthsDepths.linerLength} unit="ft" />
                                         <DataRow label="Top of Liner (TOL)" value={calculations.lengthsDepths.topOfLiner} unit="ft" />
@@ -885,6 +1004,16 @@ const App: FC = () => {
                                         <DataRow label="Full Liner Volume" value={calculations.detailedVolumes.fullLiner} unit="bbl" />
                                         <DataRow label="Volume to Pump Plug" value={calculations.detailedVolumes.volumeToPumpPlug} unit="bbl" />
                                     </CalculationCard>
+
+                                    {/* Volume Calculations */}
+                                    <CalculationCard title="Volume Calculations">
+                                        <DataRow label="Liner Capacity" value={linerCapacityBblFt} unit="bbl/ft" />
+                                        <DataRow label="Drill Pipe Capacity (DP1)" value={dp1CapacityBblFt} unit="bbl/ft" />
+                                        {dp2CapacityBblFt > 0 && (<DataRow label="Drill Pipe Capacity (DP2)" value={dp2CapacityBblFt} unit="bbl/ft" />)}
+                                        <DataRow label="Annulus Volume (Casing-Liner)" value={annulusVolume} unit="bbl" />
+                                        <DataRow label="String Displacement" value={stringDisplacement} unit="bbl" />
+                                        <DataRow label="Total Cement Required" value={requiredCementVol} unit="bbl" />
+                                    </CalculationCard>
                                     
                                     <CalculationCard title="CEMENT FORCE & Hydrostatic Analysis">
                                         <div className="mb-2 flex items-center justify-between">
@@ -892,8 +1021,8 @@ const App: FC = () => {
                                         </div>
                                         {cementSummary ? (
                                             <div className="space-y-3">
-                                                <div className="overflow-x-auto">
-                                                    <table className="w-full text-xs text-left text-slate-700">
+                                                <div className="overflow-x-auto -mx-4 px-4">
+                                                    <table className="w-full min-w-[1100px] text-xs text-left text-slate-700 whitespace-nowrap">
                                                         <thead className="text-xs uppercase bg-slate-200 sticky top-0">
                                                             <tr>
                                                                 <th className="px-2 py-1">Fluid 1</th>
@@ -940,6 +1069,45 @@ const App: FC = () => {
                                         ) : (
                                             <p className="text-slate-500">Run calculation to populate cement force steps, or click "Rebuild from Fluids".</p>
                                         )}
+                                    </CalculationCard>
+
+                                    {/* Hydrostatic Pressure Calculations */}
+                                    <CalculationCard title="Hydrostatic Pressure Calculations">
+                                        <DataRow label="Mud Pressure at Liner Top" value={mudPressureAtTOL} unit="psi" />
+                                        <DataRow label="Mud Pressure at Liner Shoe" value={mudPressureAtShoe} unit="psi" />
+                                        <DataRow label="Cement Pressure at Liner Top" value={cemPressureAtTOL} unit="psi" />
+                                        <DataRow label="Cement Pressure at Liner Shoe" value={cemPressureAtShoe} unit="psi" />
+                                    </CalculationCard>
+
+                                    {/* Hookload Calculations */}
+                                    <CalculationCard title="Hookload Calculations">
+                                        <DataRow label="Initial Hookload (Pre-Cement)" value={initialHook} unit="lbf" />
+                                        <DataRow label="Hookload with Safety Factor" value={hookWithSF} unit="lbf" />
+                                        <DataRow label="Post-Cement Hookload" value={postCementHook} unit="lbf" />
+                                    </CalculationCard>
+
+                                    {/* Stretch Calculations */}
+                                    <CalculationCard title="Stretch Calculations">
+                                        <DataRow label="Setdown Force" value={setdown} unit="lbf" />
+                                        <DataRow label="Total Load on Drill String" value={initialHook + setdown} unit="lbf" />
+                                        <DataRow label="Drill String Cross Section" value={totalDpArea} unit="in²" />
+                                        <DataRow label="Stretch Due to Load" value={totalStretchIn} unit="in" />
+                                        <DataRow label="Stretch in Feet" value={totalStretchFt} unit="ft" />
+                                    </CalculationCard>
+
+                                    {/* Force Analysis on Liner Hanger */}
+                                    <CalculationCard title="Force Analysis on Liner Hanger">
+                                        <DataRow label="Downward Force - Liner Weight" value={linerBuoyed} unit="lbf" />
+                                        <DataRow label="Downward Force - Setdown" value={setdown} unit="lbf" />
+                                        <DataRow label="Upward Force - Cement Buoyancy" value={totalUp} unit="lbf" />
+                                        <DataRow label="Net Downward Force" value={netDownOnHanger} unit="lbf" />
+                                        <DataRow label="Net Force with Safety Factor" value={netDownWithSF} unit="lbf" />
+                                    </CalculationCard>
+
+                                    {/* U-Tube Effect Calculations */}
+                                    <CalculationCard title="U-Tube Effect Calculations">
+                                        <DataRow label="Pressure Diff at Surface" value={uTubeDiff} unit="psi" />
+                                        <DataRow label="Critical Pump Rate" value={criticalPumpRate} unit="bpm" />
                                     </CalculationCard>
                                 </div>
                             </div>

@@ -673,15 +673,42 @@ setIsAssessingRisk(false);
     const FluidInputs: FC<{fluids: Fluid[]; setFluids: React.Dispatch<React.SetStateAction<Fluid[]>>; label: string}> = ({ fluids, setFluids, label }) => (
         <div className="bg-slate-50 p-6 rounded-xl shadow-inner flex-1 min-w-[300px]">
             <h3 className="text-lg font-semibold mb-4 text-slate-700">{label}</h3>
-            {fluids.length > 0 ? fluids.map((fluid, index) => (
-                <div key={index} className="p-3 bg-slate-100 rounded-lg mb-2">
-                    <h4 className="font-medium text-slate-800">{fluid.label}</h4>
-                    <div className="grid grid-cols-2 gap-4 mt-2">
-                        <label className="block relative"><span className="text-sm font-medium text-slate-600">Volume (bbl)</span><input type="number" value={fluid.volume} onChange={(e) => setFluids(prev => prev.map((f, i) => i === index ? { ...f, volume: e.target.value } : f))} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" /></label>
-                        <label className="block relative"><span className="text-sm font-medium text-slate-600">Weight (ppg)</span><input type="number" value={fluid.ppg} onChange={(e) => setFluids(prev => prev.map((f, i) => i === index ? { ...f, ppg: e.target.value } : f))} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" /></label>
-                    </div>
+            {fluids.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {fluids.map((fluid, index) => (
+                        <div key={index} className="p-3 bg-slate-100 rounded-lg">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                                <div>
+                                    <span className="text-sm font-medium text-slate-600">Fluid</span>
+                                    <span className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-slate-200 text-slate-700 text-center">
+                                        {fluid.label}
+                                    </span>
+                                </div>
+                                <label className="block">
+                                    <span className="text-sm font-medium text-slate-600">Volume (bbl)</span>
+                                    <input
+                                        type="number"
+                                        value={fluid.volume}
+                                        onChange={(e) => setFluids(prev => prev.map((f, i) => i === index ? { ...f, volume: e.target.value } : f))}
+                                        className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                                    />
+                                </label>
+                                <label className="block">
+                                    <span className="text-sm font-medium text-slate-600">Weight (ppg)</span>
+                                    <input
+                                        type="number"
+                                        value={fluid.ppg}
+                                        onChange={(e) => setFluids(prev => prev.map((f, i) => i === index ? { ...f, ppg: e.target.value } : f))}
+                                        className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                                    />
+                                </label>
+                            </div>
+                        </div>
+                    ))}
                 </div>
-            )) : <p className="text-slate-500 text-sm">No fluids configured.</p>}
+            ) : (
+                <p className="text-slate-500 text-sm">No fluids configured.</p>
+            )}
         </div>
     );
 
@@ -812,7 +839,16 @@ setIsAssessingRisk(false);
                         <div className="flex flex-wrap gap-6">
                             <div className="bg-slate-50 p-6 rounded-xl shadow-inner flex-1 min-w-[300px]">
                                 <h3 className="text-lg font-semibold text-slate-700 mb-4">Base Mud</h3>
-                                <label className="block"><span className="text-sm font-medium text-slate-600">Weight (ppg)</span><input type="number" value={mud.ppg} onChange={(e) => setMud({ ppg: e.target.value })} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" /></label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                                    <div>
+                                        <span className="text-sm font-medium text-slate-600">Fluid</span>
+                                        <span className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-slate-200 text-slate-700 text-center">Base Mud</span>
+                                    </div>
+                                    <label className="block">
+                                        <span className="text-sm font-medium text-slate-600">Weight (ppg)</span>
+                                        <input type="number" value={mud.ppg} onChange={(e) => setMud({ ppg: e.target.value })} className="mt-1 block w-full p-2 border border-slate-300 rounded-md bg-white text-slate-900" />
+                                    </label>
+                                </div>
                             </div>
                             <FluidInputs fluids={spacers} setFluids={setSpacers} label="Spacers" />
                             <FluidInputs fluids={cements} setFluids={setCements} label="Cements" />

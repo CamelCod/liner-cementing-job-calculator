@@ -837,8 +837,8 @@ setIsAssessingRisk(false);
                 return (
                      <div className="p-6 animate-fade-in">
                         <h2 className="text-2xl font-bold text-slate-800 mb-4">Fluid Inputs</h2>
-                        <div className="flex flex-wrap gap-6">
-                            <div className="bg-slate-50 p-6 rounded-xl shadow-inner flex-1 min-w-[300px]">
+                        <div className="space-y-6">
+                            <div className="bg-slate-50 p-6 rounded-xl shadow-inner">
                                 <h3 className="text-lg font-semibold text-slate-700 mb-4">Base Mud</h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                                     <div>

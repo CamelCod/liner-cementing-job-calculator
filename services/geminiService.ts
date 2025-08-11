@@ -2,11 +2,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { PipeConfig, Fluid, HoleOverlapConfig, MudConfig, SurveyRow, Calculations, DeproReport } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Graceful AI initialization: avoid throwing at import time in production builds (e.g., GitHub Pages)
+const GEMINI_API_KEY = (process.env.API_KEY || process.env.GEMINI_API_KEY || '').trim();
+const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 interface ProcedureData {
   casing: PipeConfig;
@@ -46,6 +44,9 @@ interface DeproAnalysisData {
 
 
 export const generateCementingProcedure = async (data: ProcedureData): Promise<string> => {
+  if (!ai) {
+    return "AI features are disabled. Set GEMINI_API_KEY at build time to enable procedure generation.";
+  }
   const { casing, liner, holeOverlap, mud, spacers, cements, displacements } = data;
   
   const prompt = `
@@ -77,7 +78,7 @@ export const generateCementingProcedure = async (data: ProcedureData): Promise<s
         model: 'gemini-2.5-flash',
         contents: prompt
     });
-    return response.text;
+    return response.text ?? '';
   } catch (error) {
     console.error("Gemini API Error (generateCementingProcedure):", error);
     return `An error occurred while calling the Gemini API: ${error instanceof Error ? error.message : String(error)}`;
@@ -85,6 +86,9 @@ export const generateCementingProcedure = async (data: ProcedureData): Promise<s
 };
 
 export const runRiskAssessment = async (data: ProcedureData): Promise<string> => {
+  if (!ai) {
+    return "AI features are disabled. Set GEMINI_API_KEY at build time to enable risk assessment.";
+  }
     const { casing, liner, holeOverlap, mud, spacers, cements, displacements } = data;
 
     const prompt = `
@@ -112,7 +116,7 @@ export const runRiskAssessment = async (data: ProcedureData): Promise<string> =>
         model: 'gemini-2.5-flash',
         contents: prompt
     });
-    return response.text;
+    return response.text ?? '';
   } catch (error)
   {
     console.error("Gemini API Error (runRiskAssessment):", error);
@@ -122,18 +126,23 @@ export const runRiskAssessment = async (data: ProcedureData): Promise<string> =>
 
 
 export const explainDrillingTerm = async (term: string): Promise<string> => {
-    if (!term) return "Please enter a term to explain.";
+  if (!term) {
+    return "Please enter a term to explain.";
+  }
+  if (!ai) {
+    return "AI features are disabled. Set GEMINI_API_KEY at build time to enable term explanations.";
+  }
 
     const prompt = `
     Explain the drilling engineering term "${term}" in a simple, clear manner for someone new to the industry. Provide a brief definition and describe its importance or role in drilling operations.
     `;
 
-    try {
-        const response = await ai.models.generateContent({
+  try {
+    const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt
         });
-        return response.text;
+    return response.text ?? '';
     } catch (error) {
         console.error("Gemini API Error (explainDrillingTerm):", error);
         return `An error occurred while calling the Gemini API: ${error instanceof Error ? error.message : String(error)}`;
@@ -141,11 +150,13 @@ export const explainDrillingTerm = async (term: string): Promise<string> => {
 };
 
 export const simulatePackerSettingForce = async (data: PackerForceData): Promise<string> => {
+  if (!ai) {
+    return "AI features are disabled. Set GEMINI_API_KEY at build time to enable packer force simulation.";
+  }
     const { dp1, dp2, mud, surveyData, packerForce } = data;
     
-    const dp1Length = parseFloat(dp1.length || '0');
-    const dp2Length = parseFloat(dp2.length || '0');
-    const totalLength = dp1Length + dp2Length;
+  const dp1Length = parseFloat(dp1.length || '0');
+  const dp2Length = parseFloat(dp2.length || '0');
     const maxInclination = surveyData.length > 0 ? Math.max(...surveyData.map(r => parseFloat(r[2] || '0'))) : 0;
     
     const dp1AirWeight = dp1Length * parseFloat(dp1.wt || '0');
@@ -176,7 +187,7 @@ export const simulatePackerSettingForce = async (data: PackerForceData): Promise
         model: 'gemini-2.5-flash',
         contents: prompt
     });
-    return response.text;
+    return response.text ?? '';
   } catch (error) {
     console.error("Gemini API Error (simulatePackerSettingForce):", error);
     return `An error occurred during Packer Force simulation: ${error instanceof Error ? error.message : String(error)}`;
@@ -186,6 +197,17 @@ export const simulatePackerSettingForce = async (data: PackerForceData): Promise
 const degreesToRadians = (deg: number) => deg * (Math.PI / 180);
 
 export const generateDeproAnalysis = async (data: DeproAnalysisData): Promise<DeproReport> => {
+  if (!ai) {
+    return {
+      title: "AI Disabled",
+      executiveSummary: "AI features are disabled. Set GEMINI_API_KEY at build time to enable DEPRO analysis.",
+      introduction: "",
+      jobDetails: "",
+      volumetricAnalysis: "",
+      mechanicalAnalysis: "",
+      conclusion: "",
+    };
+  }
 
     const deproContext = `
 DEPRO is a comprehensive torque, drag, and hydraulics program. Using this software, users can reduce many of the risks encountered in drilling and completion operations. DEPRO predicts the limits in the length of a horizontal well based on specific friction factors, recommends rig specifications, and evaluates the required weight to set a packer. For hydraulics, DEPRO covers downhole circulating pressures, surge and swab, equivalent circulation densities (ECD), bit optimization, hole cleaning, and volumetric displacements. Using DEPRO, downhole drilling hydraulic conditions can be fully examined, and any potential problems can be identified prior to field execution. If you are interested in both TADPRO and HYDPRO, DEPRO is the package for you. It combines all the essential parts of both software programs.
@@ -224,8 +246,8 @@ Generate a structured report in JSON format that summarizes the analysis.
 Populate the following JSON schema:
 `;
 
-    try {
-        const response = await ai.models.generateContent({
+  try {
+    const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
@@ -246,7 +268,8 @@ Populate the following JSON schema:
             }
         });
         
-        const report = JSON.parse(response.text.trim()) as DeproReport;
+  const raw = (response.text ?? '{}').trim();
+  const report = JSON.parse(raw) as DeproReport;
         return report;
         
     } catch (error) {

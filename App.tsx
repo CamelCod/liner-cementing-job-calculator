@@ -1057,6 +1057,7 @@ setIsAssessingRisk(false);
                         <div className="bg-slate-50 p-6 rounded-xl shadow-inner space-y-3">
                             <h3 className="text-lg font-semibold text-slate-700">Volumes & Capacities (auto)</h3>
                             {(() => {
+                                try {
                                 const pCasing = parsePipe(casing, dpConfig);
                                 const pLiner = parsePipe(liner, dpConfig);
                                 const pDp1 = parsePipe(dp1, dpConfig);
@@ -1119,6 +1120,10 @@ setIsAssessingRisk(false);
                                         </table>
                                     </div>
                                 );
+                                } catch (e) {
+                                    console.error('Volumes table render error:', e);
+                                    return <div className="text-slate-500 text-sm">Unable to compute volumes with current inputs.</div>;
+                                }
                             })()}
                         </div>
                     </div>

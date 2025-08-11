@@ -430,7 +430,7 @@ const App: FC = () => {
         const topOfLinerMd = pCasing.md - pHoleOverlap.linerOverlap;
         const topOfLinerTvd = parseFloat(findTvdFromMd(topOfLinerMd));
         
-        // --- Annular Fluid Columns & Hydrostatics ---
+    // --- Annular Fluid Columns & Hydrostatics ---
         const fluidsToPlaceAnnulus = [...cements, ...spacers];
         const annularFluidColumns: {label: string, ppg: number, topMd: number, bottomMd: number, topTvd: number, bottomTvd: number}[] = [];
         let currentAnnulusBottomMd = pLiner.md;
@@ -485,6 +485,108 @@ const App: FC = () => {
              return p;
         }
 
+        // --- Inside-String Fluid Columns (use user PPGs) ---
+        // Build the path from surface down to liner shoe: DP1 -> DP2 -> Liner above shoe (LC to shoe) -> Shoe track
+        const insidePathSegments = [
+            { name: 'dp1', length: Math.max(pDp1.length, 0), cap: bblPerFt(pDp1.id) },
+            { name: 'dp2', length: Math.max(pDp2.length, 0), cap: bblPerFt(pDp2.id) },
+            { name: 'liner_above_shoe', length: Math.max(pLandingCollarMd - topOfLinerMd, 0), cap: bblPerFt(pLiner.id) },
+            { name: 'shoe_track', length: Math.max(pHoleOverlap.shoeTrackLength, 0), cap: bblPerFt(pLiner.id) },
+        ];
+        const pathTotalTvd = insidePathSegments.reduce((acc, s) => acc + s.length, 0);
+
+        // Assume final inside column from surface downward is: Displacements (in given order) then Spacers then Cements
+        // This approximates post-displacement state. If volumes are insufficient to reach the liner, remaining column is base mud.
+        const insideFluidsTopDown: { label: string; volume: number; ppg: number }[] = [
+            ...displacements,
+            ...spacers,
+            ...cements
+        ].map(f => ({ label: f.label, volume: Math.max(parseFloat(f.volume || '0') || 0, 0), ppg: Math.max(parseFloat(f.ppg || '0') || 0, 0) }));
+
+        type InsideCol = { label: string; ppg: number; topTvd: number; bottomTvd: number };
+        const insideFluidColumns: InsideCol[] = [];
+        let depthSoFar = 0; // TVD from surface
+        let segIndex = 0;
+        let segDepthUsed = 0; // feet used within current segment
+
+        const advanceDepthBy = (feet: number) => {
+            let remaining = feet;
+            while (remaining > 0 && segIndex < insidePathSegments.length) {
+                const seg = insidePathSegments[segIndex];
+                const segRemaining = Math.max(seg.length - segDepthUsed, 0);
+                const take = Math.min(segRemaining, remaining);
+                depthSoFar += take;
+                segDepthUsed += take;
+                remaining -= take;
+                if (segDepthUsed >= seg.length - 1e-9) { segIndex++; segDepthUsed = 0; }
+            }
+        };
+
+        // Helper to convert a volume (bbl) to feet along the path, considering varying capacities
+        const feetForVolume = (volBbl: number): number => {
+            let remaining = volBbl;
+            let idx = segIndex;
+            let usedInSeg = segDepthUsed;
+            let feet = 0;
+            while (remaining > 1e-9 && idx < insidePathSegments.length) {
+                const seg = insidePathSegments[idx];
+                const segRemainingFt = Math.max(seg.length - (idx === segIndex ? usedInSeg : 0), 0);
+                const segCap = seg.cap; // bbl/ft
+                const segRemainingBbl = segRemainingFt * segCap;
+                const takeBbl = Math.min(remaining, segRemainingBbl);
+                const takeFt = takeBbl / (segCap > 0 ? segCap : 1e-9);
+                feet += takeFt;
+                remaining -= takeBbl;
+                // Move to next segment
+                idx++;
+                usedInSeg = 0;
+            }
+            return feet;
+        };
+
+        for (const f of insideFluidsTopDown) {
+            if (f.volume <= 0 || f.ppg <= 0) continue;
+            const start = depthSoFar;
+            const heightFt = feetForVolume(f.volume);
+            const end = Math.min(start + heightFt, pathTotalTvd);
+            if (end > start) {
+                insideFluidColumns.push({ label: f.label, ppg: f.ppg, topTvd: start, bottomTvd: end });
+                advanceDepthBy(end - start);
+            }
+            if (depthSoFar >= pathTotalTvd - 1e-6) break;
+        }
+
+        // If column doesn't reach target tvd, fill remainder with base mud
+        if (depthSoFar < pathTotalTvd - 1e-6) {
+            insideFluidColumns.push({ label: 'Mud (remaining)', ppg: pMudWeight, topTvd: depthSoFar, bottomTvd: pathTotalTvd });
+        }
+
+        const getInsideHydrostatic = (targetTvd: number): number => {
+            let p = 0;
+            let current = 0;
+            const cols = [{ ppg: pMudWeight, topTvd: 0, bottomTvd: 0 }, ...insideFluidColumns];
+            for (const col of cols) {
+                const top = Math.max(current, col.topTvd);
+                const bottom = Math.min(targetTvd, col.bottomTvd);
+                const h = bottom - top;
+                if (h > 0 && col.ppg > 0) p += h * col.ppg * PSI_PER_FT_FACTOR;
+                current = Math.max(current, col.bottomTvd);
+                if (current >= targetTvd) break;
+            }
+            // If targetTvd beyond our columns, assume mud
+            if (current < targetTvd) p += (targetTvd - current) * pMudWeight * PSI_PER_FT_FACTOR;
+            return p;
+        };
+
+        const insideEquivalentPpg = (topTvd: number, bottomTvd: number): number => {
+            const h = Math.max(bottomTvd - topTvd, 0);
+            if (h <= 0) return pMudWeight;
+            const pBottom = getInsideHydrostatic(bottomTvd);
+            const pTop = getInsideHydrostatic(topTvd);
+            const dP = pBottom - pTop;
+            return dP / (PSI_PER_FT_FACTOR * h);
+        };
+
         // --- VOLUMES & CAPACITIES ---
         const cap = { dp1Int: bblPerFt(pDp1.id), dp2Int: bblPerFt(pDp2.id), linerInt: bblPerFt(pLiner.id), ohAnn: ohAnnCap, linerOverlapAnn: linerAnnCap };
         const ratHoleLength = pTotalDepthMd - pLiner.md;
@@ -523,10 +625,11 @@ const App: FC = () => {
         for (const col of annularFluidColumns) {
             const deltaTvd = col.bottomTvd - col.topTvd;
             if (deltaTvd <= 0) continue;
-            const force = (col.ppg - pMudWeight) * PSI_PER_FT_FACTOR * deltaTvd * linerOdArea;
+            const insidePpgSegment = insideEquivalentPpg(col.topTvd, col.bottomTvd);
+            const force = (col.ppg - insidePpgSegment) * PSI_PER_FT_FACTOR * deltaTvd * linerOdArea;
             totalForceChange += force;
-            totalUTubePsi += (col.ppg - pMudWeight) * PSI_PER_FT_FACTOR * deltaTvd;
-            cementForceTable.push({ fluid: col.label, annulusPpg: col.ppg, insidePpg: pMudWeight, deltaTvd, force, direction: force > 0 ? 'Down' : 'Up' });
+            totalUTubePsi += (col.ppg - insidePpgSegment) * PSI_PER_FT_FACTOR * deltaTvd;
+            cementForceTable.push({ fluid: col.label, annulusPpg: col.ppg, insidePpg: insidePpgSegment, deltaTvd, force, direction: force > 0 ? 'Down' : 'Up' });
         }
         const cementForces: CementForceCalcs = { table: cementForceTable, originalBuoyedWeight: linerBuoyedWeight, finalBuoyedWeight: linerBuoyedWeight + totalForceChange, totalForceChange, totalUTubePsi, shoeDifferentialPsi: -totalUTubePsi };
 

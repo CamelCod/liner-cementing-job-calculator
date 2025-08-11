@@ -15,5 +15,6 @@ test('app loads and shows core UI', async ({ page }) => {
 test('run calculation switches to results', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Run Calculation/i }).click();
-  await expect(page.getByText(/Calculation Results/i)).toBeVisible();
+  // The app shows a top-level page heading exactly 'Results'
+  await expect(page.getByRole('heading', { name: 'Results', exact: true })).toBeVisible();
 });

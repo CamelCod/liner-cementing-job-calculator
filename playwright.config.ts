@@ -19,9 +19,11 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
-    command: 'npm run preview -- --port=4173 --strictPort',
+  // Ensure the production bundle exists before starting the preview server
+  command: 'npm run build && npm run preview -- --port=4173 --strictPort',
     url: 'http://localhost:4173/',
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+  // Allow more time on slower machines/CI
+  timeout: 180_000,
   },
 });

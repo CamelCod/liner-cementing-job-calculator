@@ -1052,6 +1052,75 @@ setIsAssessingRisk(false);
                                 <CementForceTable />
                             </div>
                         </div>
+
+                        {/* Auto-computed Volumes & Capacities summary */}
+                        <div className="bg-slate-50 p-6 rounded-xl shadow-inner space-y-3">
+                            <h3 className="text-lg font-semibold text-slate-700">Volumes & Capacities (auto)</h3>
+                            {(() => {
+                                const pCasing = parsePipe(casing, dpConfig);
+                                const pLiner = parsePipe(liner, dpConfig);
+                                const pDp1 = parsePipe(dp1, dpConfig);
+                                const pDp2 = parsePipe(dp2, dpConfig, true);
+                                const pTotalDepthMd = parseFloat(totalDepth.md || '0');
+                                const holeId = parseFloat(holeOverlap.openHoleId || '0');
+                                const linerOverlapFt = Math.max(parseFloat(holeOverlap.linerOverlap || '0') || 0, 0);
+                                const shoeTrackFt = Math.max(parseFloat(holeOverlap.shoeTrackLength || '0') || 0, 0);
+                                const topOfLinerMd = pCasing.md - linerOverlapFt;
+
+                                const linerLen = Math.max(pLiner.md - topOfLinerMd, 0);
+                                const ratHoleLen = Math.max(pTotalDepthMd - pLiner.md, 0);
+                                const ohAnnLen = Math.max(pLiner.md - pCasing.md, 0);
+
+                                const capDp1Int = bblPerFt(pDp1.id);
+                                const capDp2Int = bblPerFt(pDp2.id);
+                                const capLinerInt = bblPerFt(pLiner.id);
+                                const capRatHoleInt = bblPerFt(holeId);
+                                const capOhAnn = bblPerFt(pLiner.od, holeId);
+                                const capLinerOverlapAnn = bblPerFt(pLiner.od, pCasing.id);
+
+                                const rows = [
+                                    { section: 'DP1 (internal)', length: Math.max(pDp1.length, 0), bblFt: capDp1Int, volume: Math.max(pDp1.length, 0) * capDp1Int },
+                                    { section: 'DP2 (internal)', length: Math.max(pDp2.length, 0), bblFt: capDp2Int, volume: Math.max(pDp2.length, 0) * capDp2Int },
+                                    { section: 'Liner (internal above shoe)', length: linerLen, bblFt: capLinerInt, volume: linerLen * capLinerInt },
+                                    { section: 'Shoe Track (internal)', length: shoeTrackFt, bblFt: capLinerInt, volume: shoeTrackFt * capLinerInt },
+                                    { section: 'Rat Hole (internal)', length: ratHoleLen, bblFt: capRatHoleInt, volume: ratHoleLen * capRatHoleInt },
+                                    { section: 'Open Hole Annulus', length: ohAnnLen, bblFt: capOhAnn, volume: ohAnnLen * capOhAnn },
+                                    { section: 'Liner Overlap Annulus', length: linerOverlapFt, bblFt: capLinerOverlapAnn, volume: linerOverlapFt * capLinerOverlapAnn },
+                                ];
+                                const total = rows.reduce((a, r) => a + r.volume, 0);
+
+                                return (
+                                    <div className="w-full overflow-x-auto">
+                                        <table className="min-w-[800px] w-full text-sm text-left text-slate-700">
+                                            <thead className="text-xs uppercase bg-slate-200">
+                                                <tr>
+                                                    <th className="px-4 py-2">Section</th>
+                                                    <th className="px-4 py-2 text-right">Length (ft)</th>
+                                                    <th className="px-4 py-2 text-right">bbl/ft</th>
+                                                    <th className="px-4 py-2 text-right">Volume (bbl)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {rows.map((r) => (
+                                                    <tr key={r.section} className="bg-white border-b">
+                                                        <td className="px-4 py-2 whitespace-nowrap">{r.section}</td>
+                                                        <td className="px-4 py-2 text-right">{r.length.toFixed(0)}</td>
+                                                        <td className="px-4 py-2 text-right">{r.bblFt.toFixed(4)}</td>
+                                                        <td className="px-4 py-2 text-right">{r.volume.toFixed(2)}</td>
+                                                    </tr>
+                                                ))}
+                                                <tr className="bg-slate-100 font-semibold">
+                                                    <td className="px-4 py-2">Total</td>
+                                                    <td className="px-4 py-2"></td>
+                                                    <td className="px-4 py-2"></td>
+                                                    <td className="px-4 py-2 text-right">{total.toFixed(2)}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })()}
+                        </div>
                     </div>
                 );
             case 'fluid-config':

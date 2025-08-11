@@ -40,11 +40,11 @@ jobs:
           cp dist/index.html dist/404.html
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          # Use a unique, explicit artifact name to avoid collisions with any other step
           name: pages-bundle
           path: ./dist
+          if-no-files-found: error
 
   deploy:
     environment:

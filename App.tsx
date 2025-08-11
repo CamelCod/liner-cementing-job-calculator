@@ -57,9 +57,11 @@ interface PipeInputProps {
   setPipe: React.Dispatch<React.SetStateAction<PipeConfig>>;
   pipeData: { od: string; id: string; wt: string; grade?: string }[];
   gradeOptions?: string[];
+    // Optional custom label for the grade dropdown (e.g., 'DP1 Grade')
+    gradeLabel?: string;
   disabled?: boolean;
 }
-const PipeInput: FC<PipeInputProps> = ({ label, pipe, setPipe, pipeData, gradeOptions, disabled = false }) => {
+const PipeInput: FC<PipeInputProps> = ({ label, pipe, setPipe, pipeData, gradeOptions, gradeLabel, disabled = false }) => {
     const inputClasses = "mt-1 block w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 bg-white text-slate-900 disabled:bg-slate-200 disabled:cursor-not-allowed";
     const readOnlyClasses = "mt-1 block w-full p-2 border border-slate-300 rounded-md bg-slate-200 text-slate-600 cursor-not-allowed text-center";
     
@@ -102,9 +104,9 @@ const PipeInput: FC<PipeInputProps> = ({ label, pipe, setPipe, pipeData, gradeOp
         <div className={`bg-slate-50 p-4 rounded-xl shadow-inner ${disabled ? 'opacity-50' : ''}`}>
             <h3 className="text-lg font-semibold mb-4 text-slate-800">{label}</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
-                {gradeOptions && (
+        {gradeOptions && (
                     <label className="block">
-                        <span className="text-sm font-medium text-slate-600">Grade</span>
+            <span className="text-sm font-medium text-slate-600">{gradeLabel || 'Grade'}</span>
                         <select name="grade" value={pipe.grade} onChange={handleGenericChange} className={inputClasses} disabled={disabled}>
                             {gradeOptions.map(g => <option key={g} value={g}>{g}</option>)}
                         </select>
@@ -305,7 +307,8 @@ const App: FC = () => {
                 ]);
                 setClTable(cl);
                 setDpMeasures(dpMeas);
-                setDpGradesList(dpMat.grades);
+                // Use fixed list of grade labels for the dropdown
+                setDpGradesList(drillPipeGrades);
             } catch {
                 // ignore and keep defaults
             }
@@ -925,8 +928,8 @@ setIsAssessingRisk(false);
 
                         <PipeInput label="Parent Casing" pipe={casing} setPipe={setCasing} pipeData={casingDataForInput} />
                         <PipeInput label="Liner" pipe={liner} setPipe={setLiner} pipeData={linerDataForInput} />
-                        <PipeInput label="Drill Pipe 1" pipe={dp1} setPipe={setDp1} pipeData={dpDataForInput} gradeOptions={dpGradesList} />
-                        <PipeInput label="Drill Pipe 2" pipe={dp2} setPipe={setDp2} pipeData={dpDataForInput} gradeOptions={dpGradesList} disabled={dpConfig === 'single'} />
+                        <PipeInput label="DP1 (Upper)" pipe={dp1} setPipe={setDp1} pipeData={dpDataForInput} gradeOptions={dpGradesList} gradeLabel="DP1 Grade" />
+                        <PipeInput label="DP2 (Lower)" pipe={dp2} setPipe={setDp2} pipeData={dpDataForInput} gradeOptions={dpGradesList} gradeLabel="DP2 Grade" disabled={dpConfig === 'single'} />
 
                         <div className="bg-slate-50 p-6 rounded-xl shadow-inner space-y-4">
                             <h3 className="text-lg font-semibold text-slate-700">Depths & Dimensions</h3>

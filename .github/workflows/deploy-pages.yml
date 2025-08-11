@@ -39,12 +39,10 @@ jobs:
           # SPA fallback for GitHub Pages
           cp dist/index.html dist/404.html
 
-      - name: Upload Pages artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: pages-bundle
           path: ./dist
-          if-no-files-found: error
 
   deploy:
     environment:
@@ -56,6 +54,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        with:
-          # Deploy the artifact we just uploaded to avoid picking up multiple default artifacts
-          artifact_name: pages-bundle
+

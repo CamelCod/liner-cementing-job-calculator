@@ -3,13 +3,13 @@ import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recha
 import type { Fluid, MudConfig } from '@/types';
 import { ChartLegendContent, ChartTooltipContent } from '@/components/application/charts/charts-base';
 
-type Props = {
+type Props = Readonly<{
   mud: MudConfig;
-  spacers: Fluid[];
-  cements: Fluid[];
-  displacements: Fluid[];
+  spacers: ReadonlyArray<Fluid>;
+  cements: ReadonlyArray<Fluid>;
+  displacements: ReadonlyArray<Fluid>;
   title?: string;
-};
+}>;
 
 const COLORS = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#06B6D4', '#A855F7', '#84CC16', '#F97316'];
 
@@ -54,8 +54,8 @@ export default function FluidPieChart({ mud, spacers, cements, displacements, ti
                 outerRadius={80}
                 paddingAngle={3}
               >
-                {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} className={entry.className} />
+                {data.map((entry) => (
+                  <Cell key={`cell-${entry.name}`} fill={COLORS[data.findIndex(d => d.name === entry.name) % COLORS.length]} className={entry.className} />
                 ))}
               </Pie>
               <Tooltip content={<ChartTooltipContent isPieChart />} />

@@ -26,3 +26,6 @@ test-results/
 *.njsproj
 *.sln
 *.sw?
+
+# Ignore pre-deployment scaffolds and experiments
+pre-deployment/

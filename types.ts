@@ -235,5 +235,7 @@ export interface Calculations {
     keyVolumes: KeyVolumeEntry[];
     cementForces: CementForceCalcs | null;
     plots: PlotConfig[];
-    torqueDragResult: TorqueDragResult | null;
+    torqueDragResult: TorqueDragResult | null; // backward-compatible: typically the 'rotate' profile
+    torqueDragRotate?: TorqueDragResult | null;
+    torqueDragNoRotate?: TorqueDragResult | null;
 }

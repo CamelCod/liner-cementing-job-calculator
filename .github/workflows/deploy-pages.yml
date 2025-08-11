@@ -39,9 +39,11 @@ jobs:
           # SPA fallback for GitHub Pages
           cp dist/index.html dist/404.html
 
-      - name: Upload artifact
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
+          # Use a unique, explicit artifact name to avoid collisions with any other step
+          name: pages-bundle
           path: ./dist
 
   deploy:
@@ -54,3 +56,6 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # Deploy the artifact we just uploaded to avoid picking up multiple default artifacts
+          artifact_name: pages-bundle

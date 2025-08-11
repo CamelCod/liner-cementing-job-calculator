@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, FC, ChangeEvent } from 'react';
-import { Download, Calculator, Upload, Drill, FlaskConical, CircleChevronUp, CircleChevronDown, ClipboardList, Info, X, MapPin, Sparkles, MessageSquareMore, ShieldAlert, LoaderCircle, TrendingUp, LocateFixed, Bot, BarChart2, CheckCircle2, AlertTriangle, LayoutDashboard, Table, BrainCircuit } from 'lucide-react';
+import { Download, Calculator, Upload, Drill, FlaskConical, CircleChevronUp, CircleChevronDown, ClipboardList, MapPin, Sparkles, MessageSquareMore, ShieldAlert, LoaderCircle, TrendingUp, LocateFixed, Bot, CheckCircle2, AlertTriangle, LayoutDashboard, Table, BrainCircuit, RotateCw } from 'lucide-react';
 import type { 
     PipeConfig, Fluid, MudConfig, SurveyRow, Calculations, ActiveTab, KeyVolumeEntry, Depth, HoleOverlapConfig, 
-    ParsedPipeConfig, PlotConfig, TorqueDragResult, DeproReport, CementForceCalcs, CementForceRow
+    ParsedPipeConfig, PlotConfig, DeproReport, CementForceCalcs, CementForceRow
 } from './types';
 import * as geminiService from './services/geminiService';
 import { calculateTorqueDrag } from './services/torqueDragService';
@@ -10,23 +10,29 @@ import WellSchematic from './components/WellSchematic';
 import Modal from './components/Modal';
 import Chart from './components/Chart';
 import FluidPieChart from './components/FluidPieChart';
+import WellPath3D from './components/WellPath3D';
+import { loadCasingLinerTable, loadDrillPipeMeasures, loadDrillPipeMaterials } from './services/dataLoader';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import type { DPMeasure } from './services/dataLoader';
 
 
 // --- Data Tables for Casing, Liner, and Drill Pipe ---
-const drillPipeData = [
-    { grade: 'E-75', od: '3.500', id: '2.992', wt: '9.50' },
-    { grade: 'E-75', od: '4.000', id: '3.476', wt: '11.85' },
-    { grade: 'X-95', od: '4.500', id: '3.826', wt: '16.60' },
-    { grade: 'G-105', od: '4.500', id: '3.670', wt: '20.00' },
-    { grade: 'S-135', od: '5.000', id: '4.276', wt: '19.50' },
-    { grade: 'S-135', od: '5.000', id: '4.156', wt: '25.60' },
-    { grade: 'V-150', od: '5.500', id: '4.800', wt: '19.50' },
-    { grade: 'L-80', od: '5.500', id: '4.670', wt: '24.70' },
-    { grade: 'P-110', od: '6.625', id: '5.965', wt: '25.20' },
-    { grade: 'G-105', od: '6.625', id: '5.875', wt: '28.20' },
+// Default measures for Drill Pipe (grade is handled separately via dpGradesList)
+let drillPipeData: DPMeasure[] = [
+    { od: '3.500', id: '2.992', wt: '9.50' },
+    { od: '4.000', id: '3.476', wt: '11.85' },
+    { od: '4.500', id: '3.826', wt: '16.60' },
+    { od: '4.500', id: '3.670', wt: '20.00' },
+    { od: '5.000', id: '4.276', wt: '19.50' },
+    { od: '5.000', id: '4.156', wt: '25.60' },
+    { od: '5.500', id: '4.800', wt: '19.50' },
+    { od: '5.500', id: '4.670', wt: '24.70' },
+    { od: '6.625', id: '5.965', wt: '25.20' },
+    { od: '6.625', id: '5.875', wt: '28.20' },
 ];
 
-const casingLinerData = [
+let casingLinerData = [
     { od: '7.000', wt: '23.00', id: '6.276' },
     { od: '7.000', wt: '26.00', id: '6.184' },
     { od: '7.000', wt: '29.00', id: '6.094' },
@@ -40,7 +46,7 @@ const casingLinerData = [
     { od: '10.750', wt: '51.00', id: '9.760' },
 ];
 
-const drillPipeGrades = ['E-75', 'X-95', 'G-105', 'S-135', 'V-150', 'L-80', 'P-110'];
+let drillPipeGrades = ['E-75', 'X-95', 'G-105', 'S-135', 'V-150', 'L-80', 'P-110'];
 const STEEL_YOUNGS_MODULUS = 30e6; // psi
 const PSI_PER_FT_FACTOR = 0.052;
 
@@ -186,7 +192,7 @@ const DataRow: FC<DataRowProps> = ({ label, value, unit, className }) => (
 // Main App Component
 const App: FC = () => {
     const [activeTab, setActiveTab] = useState<ActiveTab>('well-config');
-    const [resultsView, setResultsView] = useState<'dashboard' | 'details' | 'ai' | 'cement'>('dashboard');
+    const [resultsView, setResultsView] = useState<'dashboard' | 'details' | 'ai' | 'cement' | 'td'>('dashboard');
     const [dpConfig, setDpConfig] = useState<'single' | 'dual'>('dual');
     
     // New job info state
@@ -201,6 +207,9 @@ const App: FC = () => {
     const [liner, setLiner] = useState<PipeConfig>({ od: '7.000', id: '6.184', wt: '29.00', md: '9280', tvd: '8463', grade: 'L-80' });
     const [dp1, setDp1] = useState<PipeConfig>({ grade: 'G-105', od: '4.500', id: '3.670', wt: '20.00', length: '5480', md: '', tvd: '' });
     const [dp2, setDp2] = useState<PipeConfig>({ grade: 'S-135', od: '5.000', id: '4.276', wt: '19.50', length: '3800', md: '', tvd: '' });
+    const [clTable, setClTable] = useState(casingLinerData);
+    const [dpMeasures, setDpMeasures] = useState<DPMeasure[]>(drillPipeData);
+    const [dpGradesList, setDpGradesList] = useState(drillPipeGrades);
     
     const [holeOverlap, setHoleOverlap] = useState<HoleOverlapConfig>({ openHoleId: '8.5', linerOverlap: '300', shoeTrackLength: '223', cementThickeningTime: '200', rigCapacity: '500000', casingFrictionFactor: '0.25', openHoleFrictionFactor: '0.30' });
     const [landingCollar, setLandingCollar] = useState<Depth>({ md: '9057', tvd: '' });
@@ -234,6 +243,7 @@ const App: FC = () => {
     const [isSimulatingPacker, setIsSimulatingPacker] = useState(false);
     const [packerSimResult, setPackerSimResult] = useState<string | null>(null);
     const [torqueDragResultText, setTorqueDragResultText] = useState<string | null>(null);
+    
     const [isAnalyzingDepro, setIsAnalyzingDepro] = useState(false);
     const [deproAnalysisResult, setDeproAnalysisResult] = useState<DeproReport | null>(null);
 
@@ -285,15 +295,70 @@ const App: FC = () => {
 
     // Effect for deriving DP MDs from lengths
     useEffect(() => {
-        const dp1Length = parseFloat(dp1.length || '0');
-        const dp2Length = dpConfig === 'dual' ? parseFloat(dp2.length || '0') : 0;
-        
-        const dp1Md = dp1Length;
-        const dp2Md = dp1Length + dp2Length;
+        // Load external tables and extend defaults
+        (async () => {
+            try {
+                const [cl, dpMeas, dpMat] = await Promise.all([
+                    loadCasingLinerTable(casingLinerData),
+                    loadDrillPipeMeasures(drillPipeData),
+                    loadDrillPipeMaterials(drillPipeGrades),
+                ]);
+                setClTable(cl);
+                setDpMeasures(dpMeas);
+                setDpGradesList(dpMat.grades);
+            } catch {
+                // ignore and keep defaults
+            }
+        })();
+    }, []);
 
-        setDp1(d => ({ ...d, md: dp1Md.toString() }));
-        setDp2(d => ({ ...d, md: dp2Md.toString() }));
-    }, [dp1.length, dp2.length, dpConfig]);
+    // Derived, filtered lists according to constraints:
+    // 1) Liner OD must be less than Casing ID
+    const linerOdOptions = React.useMemo(() => {
+        const casingIdNum = parseFloat(casing.id || '0');
+        return [...new Set(clTable.map(r => r.od))].filter(od => parseFloat(od) < casingIdNum);
+    }, [clTable, casing.id]);
+
+    // Constrain current liner OD if invalid
+    useEffect(() => {
+        if (liner.od && !linerOdOptions.includes(liner.od)) {
+            const newOd = linerOdOptions[0] || '';
+            if (newOd) {
+                const first = clTable.find(r => r.od === newOd);
+                if (first) setLiner(l => ({ ...l, od: first.od, wt: first.wt, id: first.id }));
+            }
+        }
+    }, [linerOdOptions]);
+
+    // 2) Drill Pipe OD must be smaller than Liner ID
+    const dpOdOptions = React.useMemo(() => {
+        const linerIdNum = parseFloat(liner.id || '0');
+        const ods = [...new Set(dpMeasures.map(r => r.od))].filter(od => parseFloat(od) < linerIdNum);
+        return ods;
+    }, [dpMeasures, liner.id]);
+
+    // Auto-correct dp1/dp2 OD if invalid
+    useEffect(() => {
+        if (dp1.od && !dpOdOptions.includes(dp1.od)) {
+            const newOd = dpOdOptions[0] || '';
+            if (newOd) {
+                const first = dpMeasures.find(r => r.od === newOd);
+                if (first) setDp1(d => ({ ...d, od: first.od, wt: first.wt, id: first.id }));
+            }
+        }
+        if (dp2.od && !dpOdOptions.includes(dp2.od)) {
+            const newOd = dpOdOptions[0] || '';
+            if (newOd) {
+                const first = dpMeasures.find(r => r.od === newOd);
+                if (first) setDp2(d => ({ ...d, od: first.od, wt: first.wt, id: first.id }));
+            }
+        }
+    }, [dpOdOptions]);
+
+    // Helper builders for filtered PipeInput props
+    const casingDataForInput = React.useMemo(() => clTable, [clTable]);
+    const linerDataForInput = React.useMemo(() => clTable.filter(r => linerOdOptions.includes(r.od)), [clTable, linerOdOptions]);
+    const dpDataForInput = React.useMemo(() => dpMeasures.filter(r => dpOdOptions.includes(r.od)), [dpMeasures, dpOdOptions]);
 
     useEffect(() => {
         setSpacers(current => Array.from({ length: numSpacers }, (_, i) => current[i] || { label: `Spacer ${i + 1}`, volume: '100', ppg: '' }));
@@ -444,7 +509,7 @@ const App: FC = () => {
         // --- STRETCH ---
         const dpArea = pipeArea(pDp1.id, pDp1.od) + (dpConfig === 'dual' ? pipeArea(pDp2.id, pDp2.od) : 0);
         const stretchDueToLiner = (linerBuoyedWeight * (pDp1.length + pDp2.length)) / (dpArea * STEEL_YOUNGS_MODULUS) * 12; // inches
-        const totalLoadOnString = initialHookload;
+        
         const stretchDueToSetdown = (pSetdownForce * (pDp1.length + pDp2.length)) / (dpArea * STEEL_YOUNGS_MODULUS) * 12; // inches
 
         // --- CEMENT FORCES / U-TUBE ---
@@ -624,7 +689,7 @@ setIsAssessingRisk(false);
             { id: 'liner', from: pDp2.md, to: pLiner.md, od: pLiner.od, id_tube: pLiner.id, wt: pLiner.wt },
         ].filter(s => s.to > s.from);
 
-        const result = calculateTorqueDrag({
+        const resultRotate = calculateTorqueDrag({
             survey: surveyData.map(r => ({ md: parseFloat(r[0]), tvd: parseFloat(r[1]), incl: parseFloat(r[2]) })),
             string,
             mudWeight: parseFloat(mud.ppg),
@@ -635,6 +700,17 @@ setIsAssessingRisk(false);
             targetSetdown: parseFloat(setdownForce) || 15000,
             segmentFt: 25,
         });
+        const resultNoRotate = calculateTorqueDrag({
+            survey: surveyData.map(r => ({ md: parseFloat(r[0]), tvd: parseFloat(r[1]), incl: parseFloat(r[2]) })),
+            string,
+            mudWeight: parseFloat(mud.ppg),
+            casingFriction: parseFloat(holeOverlap.casingFrictionFactor),
+            openHoleFriction: parseFloat(holeOverlap.openHoleFrictionFactor),
+            casingShoeMd: pCasing.md,
+            rotate: false,
+            targetSetdown: parseFloat(setdownForce) || 15000,
+            segmentFt: 25,
+        });
         // Build plots from result & survey for Results dashboard
         const tdHookloadPlot: PlotConfig = {
             id: 'td-hookload', type: 'line', title: 'T&D Hookload vs Depth', x_field: 'depth',
@@ -642,14 +718,26 @@ setIsAssessingRisk(false);
                 { key: 'hookload_out', name: 'Hookload (tension)', color: '#0ea5e9' },
                 { key: 'drag', name: 'Drag (Δ tension)', color: '#f97316' }
             ],
-            series: result.plotData,
+            series: resultRotate.plotData,
             options: { xlabel: 'MD (ft)', ylabel: 'Force (lbs)' }
         };
-        const tdTorquePlot: PlotConfig = {
-            id: 'td-torque', type: 'line', title: 'T&D Torque vs Depth', x_field: 'depth',
-            y_fields: [ { key: 'torque', name: 'Torque', color: '#10b981' } ],
-            series: result.plotData,
-            options: { xlabel: 'MD (ft)', ylabel: 'Torque (ft-lbs)' }
+        const tdTorqueDragRotatePlot: PlotConfig = {
+            id: 'td-rotate-torque-drag', type: 'line', title: 'Torque & Drag vs Depth (Rotate ON)', x_field: 'depth',
+            y_fields: [
+                { key: 'torque', name: 'Torque', color: '#10b981' },
+                { key: 'drag', name: 'Drag', color: '#ef4444' }
+            ],
+            series: resultRotate.plotData,
+            options: { xlabel: 'MD (ft)', ylabel: 'Force / Torque' }
+        };
+        const tdTorqueDragNoRotatePlot: PlotConfig = {
+            id: 'td-norotate-torque-drag', type: 'line', title: 'Torque & Drag vs Depth (Rotate OFF)', x_field: 'depth',
+            y_fields: [
+                { key: 'torque', name: 'Torque', color: '#14b8a6' },
+                { key: 'drag', name: 'Drag', color: '#f97316' }
+            ],
+            series: resultNoRotate.plotData,
+            options: { xlabel: 'MD (ft)', ylabel: 'Force / Torque' }
         };
         const wellPathPlot: PlotConfig = {
             id: 'well-path', type: 'line', title: 'Well Path (Inclination)', x_field: 'md',
@@ -660,17 +748,21 @@ setIsAssessingRisk(false);
 
         setCalculations(prev => prev ? ({
             ...prev,
-            torqueDragResult: result,
+            torqueDragResult: resultRotate,
+            torqueDragRotate: resultRotate,
+            torqueDragNoRotate: resultNoRotate,
             plots: [
                 // keep prior plots, but replace any existing T&D or well-path plots by id
-                ...((prev.plots || []).filter(p => !['td-hookload', 'td-torque', 'well-path'].includes(p.id))),
+                ...((prev.plots || []).filter(p => !['td-hookload', 'td-rotate-torque-drag', 'td-norotate-torque-drag', 'well-path'].includes(p.id))),
                 tdHookloadPlot,
-                tdTorquePlot,
+                tdTorqueDragRotatePlot,
+                tdTorqueDragNoRotatePlot,
                 wellPathPlot
             ]
         }) : null);
-        setTorqueDragResultText(result.summary);
-        setActiveTab('results');
+        setTorqueDragResultText(resultRotate.summary + '\n---\n' + resultNoRotate.summary);
+    setActiveTab('results');
+    setResultsView('td');
     };
 
     const handlePackerForceSim = async () => {
@@ -712,7 +804,7 @@ setIsAssessingRisk(false);
             {fluids.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                     {fluids.map((fluid, index) => (
-                        <div key={index} className="p-3 bg-slate-100 rounded-lg">
+                        <div key={`${label}-${fluid.label}-${index}`} className="p-3 bg-slate-100 rounded-lg">
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                                 <div>
                                     <span className="text-sm font-medium text-slate-600">Fluid</span>
@@ -769,8 +861,8 @@ setIsAssessingRisk(false);
                             </tr>
                         </thead>
                         <tbody>
-                            {cf.table.map((row, idx) => (
-                                <tr key={`${row.fluid}-${idx}`} className="bg-white border-b">
+                            {cf.table.map((row) => (
+                                <tr key={`${row.fluid}-${row.deltaTvd}-${row.direction}`} className="bg-white border-b">
                                     <td className="px-4 py-2 whitespace-nowrap">{row.fluid}</td>
                                     <td className="px-4 py-2">{row.annulusPpg.toFixed(2)}</td>
                                     <td className="px-4 py-2">{row.insidePpg.toFixed(2)}</td>
@@ -831,10 +923,10 @@ setIsAssessingRisk(false);
                             </div>
                         </div>
 
-                        <PipeInput label="Parent Casing" pipe={casing} setPipe={setCasing} pipeData={casingLinerData} />
-                        <PipeInput label="Liner" pipe={liner} setPipe={setLiner} pipeData={casingLinerData} />
-                        <PipeInput label="Drill Pipe 1" pipe={dp1} setPipe={setDp1} pipeData={drillPipeData} gradeOptions={drillPipeGrades} />
-                        <PipeInput label="Drill Pipe 2" pipe={dp2} setPipe={setDp2} pipeData={drillPipeData} gradeOptions={drillPipeGrades} disabled={dpConfig === 'single'} />
+                        <PipeInput label="Parent Casing" pipe={casing} setPipe={setCasing} pipeData={casingDataForInput} />
+                        <PipeInput label="Liner" pipe={liner} setPipe={setLiner} pipeData={linerDataForInput} />
+                        <PipeInput label="Drill Pipe 1" pipe={dp1} setPipe={setDp1} pipeData={dpDataForInput} gradeOptions={dpGradesList} />
+                        <PipeInput label="Drill Pipe 2" pipe={dp2} setPipe={setDp2} pipeData={dpDataForInput} gradeOptions={dpGradesList} disabled={dpConfig === 'single'} />
 
                         <div className="bg-slate-50 p-6 rounded-xl shadow-inner space-y-4">
                             <h3 className="text-lg font-semibold text-slate-700">Depths & Dimensions</h3>
@@ -901,12 +993,12 @@ setIsAssessingRisk(false);
                             <button onClick={handleProcessSurveyData} className="w-full flex items-center justify-center p-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors shadow-md"><Upload className="mr-2" size={20} /> Process Data</button>
                         </div>
                         {surveyData.length > 0 && (
-                            <div className="mt-4 p-4 bg-slate-100 rounded-lg max-h-60 overflow-y-auto"><h3 className="font-semibold text-slate-700 mb-2">Survey Data Preview ({surveyData.length} rows)</h3><table className="w-full text-sm text-left text-slate-700"><thead className="text-xs text-slate-700 uppercase bg-slate-200 sticky top-0"><tr><th scope="col" className="px-6 py-3">MD</th><th scope="col" className="px-6 py-3">TVD</th><th scope="col" className="px-6 py-3">Inc.</th></tr></thead><tbody>{surveyData.map((row, index) => (<tr key={index} className="bg-white border-b"><td className="px-6 py-4">{row[0]}</td><td className="px-6 py-4">{row[1]}</td><td className="px-6 py-4">{row[2]}</td></tr>))}</tbody></table></div>
+                            <div className="mt-4 p-4 bg-slate-100 rounded-lg max-h-60 overflow-y-auto"><h3 className="font-semibold text-slate-700 mb-2">Survey Data Preview ({surveyData.length} rows)</h3><table className="w-full text-sm text-left text-slate-700"><thead className="text-xs text-slate-700 uppercase bg-slate-200 sticky top-0"><tr><th scope="col" className="px-6 py-3">MD</th><th scope="col" className="px-6 py-3">TVD</th><th scope="col" className="px-6 py-3">Inc.</th></tr></thead><tbody>{surveyData.map((row) => (<tr key={`${row[0]}-${row[1]}-${row[2]}`} className="bg-white border-b"><td className="px-6 py-4">{row[0]}</td><td className="px-6 py-4">{row[1]}</td><td className="px-6 py-4">{row[2]}</td></tr>))}</tbody></table></div>
                         )}
                     </div>
                 );
             case 'results': {
-                const ResultTabButton: FC<{label: string; value: 'dashboard' | 'details' | 'ai' | 'cement'; icon: React.ReactNode; view: typeof resultsView; setView: typeof setResultsView}> = ({ label, value, icon, view, setView }) => (
+                const ResultTabButton: FC<{label: string; value: 'dashboard' | 'details' | 'ai' | 'cement' | 'td'; icon: React.ReactNode; view: typeof resultsView; setView: typeof setResultsView}> = ({ label, value, icon, view, setView }) => (
                      <button
                         onClick={() => setView(value)}
                         className={`flex items-center space-x-2 px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${resultsView === value ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
@@ -924,6 +1016,7 @@ setIsAssessingRisk(false);
                                           <ResultTabButton label="Dashboard" value="dashboard" icon={<LayoutDashboard size={16}/>} view={resultsView} setView={setResultsView} />
                                           <ResultTabButton label="Details" value="details" icon={<Table size={16}/>} view={resultsView} setView={setResultsView} />
                                           <ResultTabButton label="Cement Table" value="cement" icon={<Table size={16}/>} view={resultsView} setView={setResultsView} />
+                                          <ResultTabButton label="T&D" value="td" icon={<TrendingUp size={16}/>} view={resultsView} setView={setResultsView} />
                                           <ResultTabButton label="AI" value="ai" icon={<BrainCircuit size={16}/>} view={resultsView} setView={setResultsView} />
                                       </div>
                         </div>
@@ -1033,11 +1126,91 @@ setIsAssessingRisk(false);
                                 </div>
                             )}
 
+                            {resultsView === 'td' && (
+                                <div className="animate-fade-in space-y-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <h3 className="text-lg font-semibold text-slate-800">Torque & Drag Results</h3>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={handleTorqueDragAnalysis} disabled={surveyData.length < 2} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors disabled:bg-indigo-300 disabled:cursor-not-allowed">Run T&D Analysis</button>
+                                            <span className="text-xs text-slate-500">Requires survey data (MD, TVD, Inc).</span>
+                                        </div>
+                                    </div>
+
+                                    {!calculations?.torqueDragResult ? (
+                                        <div className="p-4 bg-slate-50 rounded-lg text-slate-600 text-sm">No T&D data yet. Paste survey in the Survey tab, then run the analysis.</div>
+                                    ) : (
+                                        <>
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                                <Chart
+                                                    plot={{
+                                                        id: 'td-rotate-torque-drag',
+                                                        type: 'line',
+                                                        title: 'Torque & Drag (Rotate ON)',
+                                                        x_field: 'depth',
+                                                        y_fields: [
+                                                            { key: 'torque', name: 'Torque', color: '#10b981' },
+                                                            { key: 'drag', name: 'Drag', color: '#ef4444' }
+                                                        ],
+                                                        series: calculations.torqueDragRotate?.plotData || calculations.torqueDragResult.plotData,
+                                                        options: { xlabel: 'Depth (ft)', ylabel: 'Force / Torque' },
+                                                    }}
+                                                />
+                                                <Chart
+                                                    plot={{
+                                                        id: 'td-norotate-torque-drag',
+                                                        type: 'line',
+                                                        title: 'Torque & Drag (Rotate OFF)',
+                                                        x_field: 'depth',
+                                                        y_fields: [
+                                                            { key: 'torque', name: 'Torque', color: '#14b8a6' },
+                                                            { key: 'drag', name: 'Drag', color: '#f97316' }
+                                                        ],
+                                                        series: calculations.torqueDragNoRotate?.plotData || [],
+                                                        options: { xlabel: 'Depth (ft)', ylabel: 'Force / Torque' },
+                                                    }}
+                                                />
+                                            </div>
+
+                                            <div className="bg-white p-4 rounded-xl shadow-md">
+                                                <h4 className="text-base font-semibold text-slate-800 mb-3 flex items-center gap-2"><RotateCw size={16}/>Interactive Well Path (3D)</h4>
+                                                <WellPath3D survey={surveyData.map(r => ({ md: parseFloat(r[0]), tvd: parseFloat(r[1]), incl: parseFloat(r[2]) }))} />
+                                                <p className="text-xs text-slate-500 mt-2">Tip: Drag to rotate, scroll to zoom, right-drag to pan.</p>
+                                            </div>
+
+                                            {/* Data table */}
+                                            <div className="bg-white p-4 rounded-xl shadow-md overflow-x-auto">
+                                                <h4 className="text-base font-semibold text-slate-800 mb-3">T&D Profile Table</h4>
+                                                <table className="min-w-[800px] w-full text-sm">
+                                                    <thead className="bg-slate-100 text-slate-700">
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left">Depth (ft)</th>
+                                                            <th className="px-3 py-2 text-left">Hookload (lbs)</th>
+                                                            <th className="px-3 py-2 text-left">Torque (ft-lbs)</th>
+                                                            <th className="px-3 py-2 text-left">Drag (lbs)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {(calculations.torqueDragRotate?.plotData || calculations.torqueDragResult.plotData).map((row) => (
+                                                            <tr key={`td-row-${row.depth}-${row.torque}-${row.drag}`} className="border-b">
+                                                                <td className="px-3 py-2">{row.depth.toLocaleString()}</td>
+                                                                <td className="px-3 py-2">{row.hookload_out.toLocaleString()}</td>
+                                                                <td className="px-3 py-2">{row.torque.toLocaleString()}</td>
+                                                                <td className="px-3 py-2">{row.drag.toLocaleString()}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
                              {resultsView === 'ai' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
                                     <div className="space-y-4">
-                                        <button onClick={handleGenerateProcedure} disabled={isGeneratingProcedure || isAssessingRisk} className="w-full flex items-center justify-center p-3 rounded-lg bg-purple-600 text-white font-bold text-lg hover:bg-purple-700 transition-colors shadow-lg disabled:bg-purple-300"><Sparkles className="mr-2" size={20} />{isGeneratingProcedure ? <><LoaderCircle className="animate-spin mr-2"/> Generating...</> : 'Generate Cementing Procedure'}</button>
-                                        <button onClick={handleRunRiskAssessment} disabled={isAssessingRisk || isGeneratingProcedure} className="w-full flex items-center justify-center p-3 rounded-lg bg-red-600 text-white font-bold text-lg hover:bg-red-700 transition-colors shadow-lg disabled:bg-red-300"><ShieldAlert className="mr-2" size={20} />{isAssessingRisk ? <><LoaderCircle className="animate-spin mr-2"/> Assessing...</> : 'Run Risk Assessment'}</button>
+                                        <button onClick={handleGenerateProcedure} disabled={isGeneratingProcedure || isAssessingRisk} className="w-full flex items-center justify-center p-3 rounded-lg bg-purple-600 text-white font-bold text-lg hover:bg-purple-700 transition-colors shadow-lg disabled:bg-purple-300 disabled:cursor-not-allowed"><Sparkles className="mr-2" size={20} />{isGeneratingProcedure ? <><LoaderCircle className="animate-spin mr-2"/> Generating...</> : 'Generate Cementing Procedure'}</button>
+                                        <button onClick={handleRunRiskAssessment} disabled={isAssessingRisk || isGeneratingProcedure} className="w-full flex items-center justify-center p-3 rounded-lg bg-red-600 text-white font-bold text-lg hover:bg-red-700 transition-colors shadow-lg disabled:bg-red-300 disabled:cursor-not-allowed"><ShieldAlert className="mr-2" size={20} />{isAssessingRisk ? <><LoaderCircle className="animate-spin mr-2"/> Assessing...</> : 'Run Risk Assessment'}</button>
                                     </div>
                                     {(geminiProcedure || geminiRiskAssessment) ? (
                                         <div className={`p-6 rounded-xl shadow-md prose prose-sm max-w-none ${geminiProcedure ? 'bg-purple-50 border-purple-200' : 'bg-red-50 border-red-200'}`}>
@@ -1179,7 +1352,29 @@ setIsAssessingRisk(false);
                 </div>
                 <div className="space-y-4 mt-6">
                     <button onClick={() => setShowTermExplainer(true)} className="w-full flex items-center justify-center p-3 rounded-lg bg-slate-500 text-white font-bold text-lg hover:bg-slate-600 transition-colors shadow-lg"><MessageSquareMore className="mr-2" size={20} /> Explain Term</button>
-                    <button onClick={() => alert('Export not implemented')} className="w-full flex items-center justify-center p-3 rounded-lg bg-blue-500 text-white font-bold text-lg hover:bg-blue-600 transition-colors shadow-lg"><Download className="mr-2" size={20} /> Export Report</button>
+                    <button onClick={() => {
+                        if (!calculations) return;
+                        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+                        const margin = 36;
+                        let y = margin;
+                        doc.setFontSize(16);
+                        doc.text('Liner Cementing Job Report', margin, y); y += 18;
+                        doc.setFontSize(10);
+                        doc.text(`Well: ${calculations.jobSummary.wellName}    Date: ${calculations.jobSummary.date}`, margin, y); y += 16;
+                        autoTable(doc, { startY: y, head: [["Metric","Value"]], theme: 'striped', styles: { fontSize: 9 }, body: [
+                            ["Initial Hookload (lbs)", `${Math.round(calculations.keyResults.initialHookload).toLocaleString()}`],
+                            ["Post-Cement Hookload (lbs)", `${Math.round(calculations.keyResults.postCementHookload).toLocaleString()}`],
+                            ["Drill String Stretch (in)", `${calculations.keyResults.drillStringStretch.toFixed(2)}`],
+                            ["Net Force on Liner Hanger (lbs)", `${Math.round(calculations.keyResults.netForceOnLinerHanger).toLocaleString()}`],
+                            ["U-Tube Pressure Diff (psi)", `${Math.round(calculations.keyResults.uTubePressureDifferential).toLocaleString()}`],
+                        ]});
+                        // advance y if adding more tables below
+                        if (calculations.cementForces?.table?.length) {
+                            autoTable(doc, { startY: y, head: [["Fluid","Annulus PPG","Inside PPG","ΔTVD (ft)","Direction","Force (lbs)"]], styles: { fontSize: 8 }, headStyles: { fillColor: [30,58,138] }, body: calculations.cementForces.table.map(r => [r.fluid, r.annulusPpg.toFixed(2), r.insidePpg.toFixed(2), r.deltaTvd.toFixed(0), r.direction, Math.round(r.force).toLocaleString()]) });
+                            y = (doc as any).lastAutoTable.finalY + 12;
+                        }
+                        doc.save(`${calculations.jobSummary.wellName || 'job'}-report.pdf`);
+                    }} className="w-full flex items-center justify-center p-3 rounded-lg bg-blue-500 text-white font-bold text-lg hover:bg-blue-600 transition-colors shadow-lg"><Download className="mr-2" size={20} /> Export Report</button>
                 </div>
             </div>
 

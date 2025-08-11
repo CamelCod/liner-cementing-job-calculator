@@ -495,12 +495,12 @@ const App: FC = () => {
         ];
         const pathTotalTvd = insidePathSegments.reduce((acc, s) => acc + s.length, 0);
 
-        // Assume final inside column from surface downward is: Displacements (in given order) then Spacers then Cements
-        // This approximates post-displacement state. If volumes are insufficient to reach the liner, remaining column is base mud.
+        // Inside-string column ordering (from surface downward): Spacers → Cements → Displacements
+        // If volumes are insufficient to reach the liner, remaining column is base mud.
         const insideFluidsTopDown: { label: string; volume: number; ppg: number }[] = [
-            ...displacements,
             ...spacers,
-            ...cements
+            ...cements,
+            ...displacements
         ].map(f => ({ label: f.label, volume: Math.max(parseFloat(f.volume || '0') || 0, 0), ppg: Math.max(parseFloat(f.ppg || '0') || 0, 0) }));
 
         type InsideCol = { label: string; ppg: number; topTvd: number; bottomTvd: number };

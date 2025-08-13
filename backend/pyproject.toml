@@ -1,0 +1,15 @@
+[project]
+name = "cementing-backend"
+version = "0.1.0"
+description = "Backend API for liner cementing job calculator"
+authors = [ {name = "CamelCod"} ]
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi~=0.111.0",
+  "uvicorn[standard]~=0.30.0",
+  "pydantic~=2.7.0"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

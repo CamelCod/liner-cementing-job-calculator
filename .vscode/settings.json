@@ -1,0 +1,25 @@
+{
+    "python.testing.pytestArgs": [
+        "."
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "cSpell.words": [
+        "autotable",
+        "bbls",
+        "Depro",
+        "depro",
+        "DEPRO",
+        "Displ",
+        "downhole",
+        "hookload",
+        "Hookload",
+        "HWDP",
+        "norotate",
+        "setdown",
+        "Setdown",
+        "xlabel",
+        "ylabel",
+        "ΔTVD"
+    ]
+}

@@ -1,0 +1,39 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "autotable",
+    "bbls",
+    "Depro",
+    "depro",
+    "DEPRO", 
+    "Displ",
+    "downhole",
+    "hookload",
+    "Hookload",
+    "HWDP",
+    "norotate",
+    "setdown",
+    "Setdown",
+    "xlabel",
+    "ylabel",
+    "ΔTVD"
+  ],
+  "ignorePaths": [
+    "node_modules/**",
+    "dist/**",
+    ".git/**",
+    "**/*.min.js",
+    "**/*.map"
+  ],
+  "dictionaries": [
+    "technical-terms"
+  ],
+  "dictionaryDefinitions": [
+    {
+      "name": "technical-terms",
+      "path": "./technical-terms.txt",
+      "description": "Oil and gas drilling technical terms"
+    }
+  ]
+}

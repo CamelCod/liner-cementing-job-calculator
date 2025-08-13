@@ -20,15 +20,19 @@ function normalizeHeader(h: string): string {
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
-  const header = splitLine(lines[0]).map(normalizeHeader);
+  const header = splitLine(lines[0] || '').map(normalizeHeader);
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const cells = splitLine(lines[i]);
+    const cells = splitLine(lines[i] || '');
     if (cells.length === 0) continue;
     const row: Record<string, string> = {};
     for (let j = 0; j < header.length && j < cells.length; j++) {
   // Strip a single pair of wrapping quotes if present
-  row[header[j]] = cells[j].replace(/(^"|"$)/g, '');
+  const headerKey = header[j];
+  const cellValue = cells[j];
+  if (headerKey && cellValue) {
+    row[headerKey] = cellValue.replace(/(^"|"$)/g, '');
+  }
     }
     rows.push(row);
   }
@@ -37,7 +41,7 @@ function parseCSV(text: string): Record<string, string>[] {
 
 function withBase(p: string): string {
   // Ensure correct path under Vite base (GitHub Pages subpath)
-  const base = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.BASE_URL) ? (import.meta as any).env.BASE_URL : '/';
+  const base = import.meta?.env?.BASE_URL || '/';
   return base.replace(/\/?$/, '/') + p.replace(/^\//, '');
 }
 
@@ -99,9 +103,9 @@ export async function loadDrillPipeMaterials(fallbackGrades: string[]): Promise<
     // The materials CSV likely has two columns: Grade and Yield (psi)
     const values = Object.values(r).filter((v) => v && v.trim().length > 0);
     if (values.length >= 2) {
-      const g = values[0].trim();
-      const y = values[1].replace(/[ ,]/g, '');
-      const yieldPsi = parseFloat(y);
+      const g = values[0]?.trim();
+      const y = values[1]?.replace(/[ ,]/g, '');
+      const yieldPsi = parseFloat(y || '');
       if (g) materials.push({ grade: g, yieldPsi: isFinite(yieldPsi) ? yieldPsi : NaN });
     }
   }

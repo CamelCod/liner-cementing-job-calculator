@@ -1,4 +1,6 @@
 
+/* cSpell:words hookload Depro bblFt bbls */
+
 
 export interface KeyVolumeEntry {
   length: number;
@@ -41,6 +43,8 @@ export interface HoleOverlapConfig {
   rigCapacity: string;
   casingFrictionFactor: string;
   openHoleFrictionFactor: string;
+    shearStrengthPsi?: string; // Optional shear strength for dart shear
+    pumpStrokeToleranceBbl?: string; // Optional pump stroke tolerance (bbl)
 }
 
 export interface Fluid {
@@ -219,7 +223,24 @@ export interface UTubeEffectCalcs {
     criticalPumpRate: number;
 }
 
+export interface VolumeOperations {
+    cementVolume: number;
+    displacementVolume: number;
+    plugDrop: number;
+    totalWellVolume: number;
+    linerDisplacementVolume: number;
+    surfaceToShoe: number;
+}
+
+export interface CementOperations {
+    waitOnCement: number;
+    cementTravelTime: number;
+    circulationRate: number;
+}
+
 export interface Calculations {
+    keyCalculations: any;
+    cementForceCalcs: any;
     jobSummary: JobSummary;
     keyResults: KeyCalculationResults;
     safetyStatus: SafetyStatusIndicators;
@@ -230,6 +251,8 @@ export interface Calculations {
     stretchCalcs: StretchCalcs;
     forceAnalysis: ForceAnalysisOnLinerHanger;
     uTubeEffect: UTubeEffectCalcs;
+    volumes: VolumeOperations;
+    operations: CementOperations;
     
     // Original detailed data for other components
     keyVolumes: KeyVolumeEntry[];

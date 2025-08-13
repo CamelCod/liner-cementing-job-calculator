@@ -1,0 +1,25 @@
+autotable
+bbls
+Depro
+depro
+DEPRO
+Displ
+downhole
+hookload
+Hookload
+HWDP
+norotate
+setdown
+Setdown
+xlabel
+ylabel
+ΔTVD
+# Additional domain-specific drilling / calculation terms
+packer
+slackoff
+slack-off
+uTube
+TVD
+MD
+ppg
+bpm

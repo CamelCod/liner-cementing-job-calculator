@@ -1,3 +1,4 @@
+/* cSpell:words hookload setdown Hookload targetSetdown */
 import type { TorqueDragPoint, TorqueDragResult } from '../types';
 
 export interface TorqueDragInputs {
@@ -30,13 +31,22 @@ function deg2rad(d: number) {
     return (d * Math.PI) / 180;
 }
 
-function interpAtMD(survey: SurveyPoint[], md: number) {
-    if (md <= survey[0].md) return survey[0];
-    if (md >= survey[survey.length - 1].md) return survey[survey.length - 1];
+function interpAtMD(survey: SurveyPoint[], md: number): SurveyPoint | null {
+    if (survey.length === 0) return null;
+    const first = survey[0];
+    const last = survey[survey.length - 1];
+    if (!first || !last) return null;
+    
+    if (md <= first.md) return first;
+    if (md >= last.md) return last;
+    
     let i = 1;
-    while (i < survey.length && survey[i].md < md) i++;
+    while (i < survey.length && survey[i]?.md !== undefined && survey[i]!.md < md) i++;
+    
     const a = survey[i - 1];
     const b = survey[i];
+    if (!a || !b) return first; // fallback
+    
     const t = (md - a.md) / (b.md - a.md);
     return {
         md,
@@ -47,16 +57,27 @@ function interpAtMD(survey: SurveyPoint[], md: number) {
 
 function discretizeSurvey(survey: SurveyPoint[], stepFt: number, toMD: number) {
     const sorted = [...survey].sort((a, b) => a.md - b.md);
-    const startMD = sorted[0].md;
-    const endMD = Math.min(toMD, sorted[sorted.length - 1].md);
+    if (sorted.length === 0) return [];
+    
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    if (!first || !last) return [];
+    
+    const startMD = first.md;
+    const endMD = Math.min(toMD, last.md);
     const path: { md: number; inc: number }[] = [];
     let md = startMD;
     while (md < endMD - 1e-9) {
-        const inc = interpAtMD(sorted, md).inc;
-        path.push({ md, inc });
+        const interpResult = interpAtMD(sorted, md);
+        if (interpResult) {
+            path.push({ md, inc: interpResult.inc });
+        }
         md = Math.min(md + stepFt, endMD);
     }
-    path.push({ md: endMD, inc: interpAtMD(sorted, endMD).inc });
+    const endInterpResult = interpAtMD(sorted, endMD);
+    if (endInterpResult) {
+        path.push({ md: endMD, inc: endInterpResult.inc });
+    }
     return path;
 }
 
@@ -85,13 +106,22 @@ function simulateSlackOffProfile(params: {
 }) {
     const { survey, toMD, segmentFt, muAt, w_buoyed_at, rotate, r_eff_ft, surfaceForce } = params;
     const path = discretizeSurvey(survey, segmentFt, toMD);
+    if (path.length === 0) return { series: [], forceAtTarget: surfaceForce };
+    
     let F = surfaceForce;
     let M = 0;
-    const series: { md: number; tension: number; torque: number }[] = [{ md: path[0].md, tension: F, torque: M }];
+    const firstPoint = path[0];
+    if (!firstPoint) return { series: [], forceAtTarget: surfaceForce };
+    
+    const series: { md: number; tension: number; torque: number }[] = [{ md: firstPoint.md, tension: F, torque: M }];
     for (let i = 1; i < path.length; i++) {
-        const mdMid = 0.5 * (path[i - 1].md + path[i].md);
-        const ds = path[i].md - path[i - 1].md;
-        const inc = deg2rad(path[i].inc);
+        const prevPoint = path[i - 1];
+        const currentPoint = path[i];
+        if (!prevPoint || !currentPoint) continue;
+        
+        const mdMid = 0.5 * (prevPoint.md + currentPoint.md);
+        const ds = currentPoint.md - prevPoint.md;
+        const inc = deg2rad(currentPoint.inc);
         const w_buoyed = w_buoyed_at(mdMid);
         const g_per_len = w_buoyed * Math.cos(inc);
         const n_per_len = w_buoyed * Math.sin(inc);
@@ -101,9 +131,10 @@ function simulateSlackOffProfile(params: {
         if (rotate) {
             M += f_per_len * r_eff_ft * ds;
         }
-        series.push({ md: path[i].md, tension: F, torque: M });
+        series.push({ md: currentPoint.md, tension: F, torque: M });
     }
-    return { series, forceAtTarget: series[series.length - 1].tension };
+    const lastPoint = series[series.length - 1];
+    return { series, forceAtTarget: lastPoint?.tension || surfaceForce };
 }
 
 function solveSurfaceForTarget(params: {
@@ -166,7 +197,14 @@ export const calculateTorqueDrag = (inputs: TorqueDragInputs): TorqueDragResult 
 
     const muAt = makeMuAt(casingFriction, casingShoeMd, casingFriction, openHoleFriction);
 
-    const targetMD = svy[svy.length - 1].md;
+    const lastPoint = svy[svy.length - 1];
+    if (!lastPoint) {
+        return {
+            plotData: [],
+            summary: "No survey data available",
+        };
+    }
+    const targetMD = lastPoint.md;
 
     const { series, surfaceForce } = solveSurfaceForTarget({
         survey: svy,
@@ -179,13 +217,22 @@ export const calculateTorqueDrag = (inputs: TorqueDragInputs): TorqueDragResult 
         targetCompression: targetSetdown,
     });
 
-    const plotData: TorqueDragPoint[] = series.map((s, i, arr) => ({
-        depth: s.md,
-        hookload_in: 0, // not modeled separately in this solver
-        hookload_out: s.tension,
-        torque: s.torque,
-        drag: i > 0 ? Math.max(0, s.tension - arr[i - 1].tension) : 0,
-    }));
+    const plotData: TorqueDragPoint[] = series.map((s, i, arr) => {
+        let prevTension = 0;
+        if (i > 0) {
+            const prevItem = arr[i - 1];
+            if (prevItem) {
+                prevTension = prevItem.tension;
+            }
+        }
+        return {
+            depth: s.md,
+            hookload_in: 0, // not modeled separately in this solver
+            hookload_out: s.tension,
+            torque: s.torque,
+            drag: i > 0 ? Math.max(0, s.tension - prevTension) : 0,
+        };
+    });
 
     const maxHookload = plotData.reduce((m, p) => Math.max(m, p.hookload_out), 0);
     const maxTorque = plotData.reduce((m, p) => Math.max(m, p.torque), 0);

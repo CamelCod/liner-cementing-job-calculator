@@ -2,9 +2,36 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { PipeConfig, Fluid, HoleOverlapConfig, MudConfig, SurveyRow, Calculations, DeproReport } from '../types';
 
-// Graceful AI initialization: avoid throwing at import time in production builds (e.g., GitHub Pages)
-const GEMINI_API_KEY = (process.env.API_KEY || process.env.GEMINI_API_KEY || '').trim();
+/**
+ * Secure AI initialization with enhanced error handling
+ * API key is validated and initialized securely
+ */
+const getGeminiApiKey = (): string => {
+  // Check multiple environment variable names for flexibility
+  const apiKey = (
+    process.env.GEMINI_API_KEY || 
+    process.env.GOOGLE_API_KEY || 
+    process.env.API_KEY || 
+    ''
+  ).trim();
+
+  // Validate API key format (basic validation)
+  if (apiKey && !apiKey.startsWith('AIza')) {
+    console.warn('Warning: Gemini API key format appears invalid. Expected format: AIza...');
+  }
+
+  return apiKey;
+};
+
+const GEMINI_API_KEY = getGeminiApiKey();
 const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
+
+/**
+ * Check if AI services are available
+ */
+export const isAiAvailable = (): boolean => {
+  return Boolean(ai && GEMINI_API_KEY);
+};
 
 interface ProcedureData {
   casing: PipeConfig;
@@ -45,7 +72,7 @@ interface DeproAnalysisData {
 
 export const generateCementingProcedure = async (data: ProcedureData): Promise<string> => {
   if (!ai) {
-    return "AI features are disabled. Set GEMINI_API_KEY at build time to enable procedure generation.";
+    return "AI features are disabled. Please configure your API key to enable procedure generation.";
   }
   const { casing, liner, holeOverlap, mud, spacers, cements, displacements } = data;
   
@@ -80,14 +107,17 @@ export const generateCementingProcedure = async (data: ProcedureData): Promise<s
     });
     return response.text ?? '';
   } catch (error) {
-    console.error("Gemini API Error (generateCementingProcedure):", error);
-    return `An error occurred while calling the Gemini API: ${error instanceof Error ? error.message : String(error)}`;
+    // Log error securely without exposing sensitive details
+    if (process.env.NODE_ENV === 'development') {
+      console.error("Gemini API Error (generateCementingProcedure):", error);
+    }
+    return "An error occurred while generating the cementing procedure. Please check your API configuration and try again.";
   }
 };
 
 export const runRiskAssessment = async (data: ProcedureData): Promise<string> => {
   if (!ai) {
-    return "AI features are disabled. Set GEMINI_API_KEY at build time to enable risk assessment.";
+    return "AI features are disabled. Please configure your API key to enable risk assessment.";
   }
     const { casing, liner, holeOverlap, mud, spacers, cements, displacements } = data;
 
@@ -117,10 +147,12 @@ export const runRiskAssessment = async (data: ProcedureData): Promise<string> =>
         contents: prompt
     });
     return response.text ?? '';
-  } catch (error)
-  {
-    console.error("Gemini API Error (runRiskAssessment):", error);
-    return `An error occurred while calling the Gemini API: ${error instanceof Error ? error.message : String(error)}`;
+  } catch (error) {
+    // Log error securely without exposing sensitive details
+    if (process.env.NODE_ENV === 'development') {
+      console.error("Gemini API Error (runRiskAssessment):", error);
+    }
+    return "An error occurred while generating the risk assessment. Please check your API configuration and try again.";
   }
 };
 
@@ -130,7 +162,7 @@ export const explainDrillingTerm = async (term: string): Promise<string> => {
     return "Please enter a term to explain.";
   }
   if (!ai) {
-    return "AI features are disabled. Set GEMINI_API_KEY at build time to enable term explanations.";
+    return "AI features are disabled. Please configure your API key to enable term explanations.";
   }
 
     const prompt = `
@@ -144,14 +176,17 @@ export const explainDrillingTerm = async (term: string): Promise<string> => {
         });
     return response.text ?? '';
     } catch (error) {
-        console.error("Gemini API Error (explainDrillingTerm):", error);
-        return `An error occurred while calling the Gemini API: ${error instanceof Error ? error.message : String(error)}`;
+        // Log error securely without exposing sensitive details
+        if (process.env.NODE_ENV === 'development') {
+            console.error("Gemini API Error (explainDrillingTerm):", error);
+        }
+        return "An error occurred while explaining the term. Please check your API configuration and try again.";
     }
 };
 
 export const simulatePackerSettingForce = async (data: PackerForceData): Promise<string> => {
   if (!ai) {
-    return "AI features are disabled. Set GEMINI_API_KEY at build time to enable packer force simulation.";
+    return "AI features are disabled. Please configure your API key to enable packer force simulation.";
   }
     const { dp1, dp2, mud, surveyData, packerForce } = data;
     
@@ -189,8 +224,11 @@ export const simulatePackerSettingForce = async (data: PackerForceData): Promise
     });
     return response.text ?? '';
   } catch (error) {
-    console.error("Gemini API Error (simulatePackerSettingForce):", error);
-    return `An error occurred during Packer Force simulation: ${error instanceof Error ? error.message : String(error)}`;
+    // Log error securely without exposing sensitive details
+    if (process.env.NODE_ENV === 'development') {
+      console.error("Gemini API Error (simulatePackerSettingForce):", error);
+    }
+    return "An error occurred during packer force simulation. Please check your API configuration and try again.";
   }
 };
 
@@ -200,7 +238,7 @@ export const generateDeproAnalysis = async (data: DeproAnalysisData): Promise<De
   if (!ai) {
     return {
       title: "AI Disabled",
-      executiveSummary: "AI features are disabled. Set GEMINI_API_KEY at build time to enable DEPRO analysis.",
+      executiveSummary: "AI features are disabled. Please configure your API key to enable DEPRO analysis.",
       introduction: "",
       jobDetails: "",
       volumetricAnalysis: "",
@@ -273,10 +311,13 @@ Populate the following JSON schema:
         return report;
         
     } catch (error) {
-        console.error("Gemini API Error (generateDeproAnalysis):", error);
+        // Log error securely without exposing sensitive details
+        if (process.env.NODE_ENV === 'development') {
+            console.error("Gemini API Error (generateDeproAnalysis):", error);
+        }
         return {
             title: "Error Generating Report",
-            executiveSummary: `An error occurred: ${error instanceof Error ? error.message : String(error)}`,
+            executiveSummary: "An error occurred while generating the DEPRO analysis. Please check your API configuration and try again.",
             introduction: "",
             jobDetails: "",
             volumetricAnalysis: "",

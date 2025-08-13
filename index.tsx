@@ -9,8 +9,12 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     this.state = { hasError: false };
   }
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(error: unknown) { console.error('App render error:', error); }
-  render() { return this.state.hasError ? <div style={{padding:16}}>Something went wrong. Please refresh.</div> : this.props.children; }
+  override componentDidCatch(error: unknown) { console.error('App render error:', error); }
+  override render() { 
+    return this.state.hasError 
+      ? <div className="p-4 text-sm text-red-700 bg-red-50 rounded-md">Something went wrong. Please refresh.</div> 
+      : this.props.children; 
+  }
 }
 
 const rootElement = document.getElementById('root');

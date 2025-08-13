@@ -1,10 +1,8 @@
-import React from 'react';
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
-import type { Fluid, MudConfig } from '@/types';
-import { ChartLegendContent, ChartTooltipContent } from '@/components/application/charts/charts-base';
+import type { Fluid, MudConfig } from '../types';
 
 type Props = Readonly<{
-  mud: MudConfig;
+  mud?: MudConfig;
   spacers: ReadonlyArray<Fluid>;
   cements: ReadonlyArray<Fluid>;
   displacements: ReadonlyArray<Fluid>;
@@ -13,7 +11,7 @@ type Props = Readonly<{
 
 const COLORS = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#06B6D4', '#A855F7', '#84CC16', '#F97316'];
 
-export default function FluidPieChart({ mud, spacers, cements, displacements, title = 'Fluid Volume Mix' }: Props) {
+export default function FluidPieChart({ spacers, cements, displacements, title = 'Fluid Volume Mix' }: Props) {
   // Aggregate volumes by group
   const toNum = (v?: string) => {
     const n = parseFloat(v || '0');
@@ -58,8 +56,8 @@ export default function FluidPieChart({ mud, spacers, cements, displacements, ti
                   <Cell key={`cell-${entry.name}`} fill={COLORS[data.findIndex(d => d.name === entry.name) % COLORS.length]} className={entry.className} />
                 ))}
               </Pie>
-              <Tooltip content={<ChartTooltipContent isPieChart />} />
-              <Legend content={<ChartLegendContent align="center" />} />
+              <Tooltip />
+              <Legend />
             </PieChart>
           </ResponsiveContainer>
           <div className="mt-3 text-center text-xs text-slate-500">Total: {total.toLocaleString(undefined, { maximumFractionDigits: 2 })} bbl</div>

@@ -59,7 +59,6 @@ export type SurveyRow = [string, string, string];
 // --- Plotting Types ---
 export interface PlotSeriesData {
   [key: string]: string | number | undefined;
-  fill?: string;
 }
 
 export interface PlotLineConfig {

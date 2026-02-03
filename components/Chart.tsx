@@ -62,12 +62,16 @@ const Chart: React.FC<ChartProps> = ({ plot }) => {
     }
   };
 
+  const chart = renderChart();
+  
   return (
     <div className="bg-white p-4 rounded-xl shadow-md">
         <h3 className="text-lg font-semibold text-slate-800 mb-4 text-center">{plot.title}</h3>
-        <ResponsiveContainer width="100%" height={300}>
-            {renderChart()}
-        </ResponsiveContainer>
+        {chart && (
+          <ResponsiveContainer width="100%" height={300}>
+              {chart}
+          </ResponsiveContainer>
+        )}
     </div>
   );
 };

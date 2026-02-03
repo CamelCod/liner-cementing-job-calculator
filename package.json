@@ -24,6 +24,8 @@
   "devDependencies": {
     "@playwright/test": "^1.54.2",
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

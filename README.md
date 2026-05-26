@@ -1,14 +1,35 @@
-# Run and deploy your AI Studio app
+# Liner Cementing Job Force Calculator
 
-This contains everything you need to run your app locally.
+## Problem
+Pre-job liner cementing calculations are typically done manually in spreadsheets — 
+error-prone, inconsistent, and time-consuming under field planning pressure.
 
-## Run Locally
+## Who It's For
+Well Construction and Applications Engineers performing pre-job planning for liner 
+cementing operations in oil & gas environments.
 
-**Prerequisites:**  Node.js
+## What It Does
+A browser-based engineering tool that applies real-world cementing physics logic to 
+calculate liner running and cementing forces — enabling faster, more accurate job 
+design validation before deployment.
 
+## Engineering Logic
+[Brief description of the force calculation methodology used]
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Tech Stack
+HTML / CSS / JavaScript — runs entirely in-browser, no installation required.
+
+## Live Tool
+🔗 https://camelcod.github.io/liner-cementing-job-calculator/
+
+## Screenshots
+[Add 1–2 screenshots here]
+
+## Future Improvements
+- [ ] Export to PDF report
+- [ ] Add torque-drag integration
+- [ ] Mobile responsive layout
+
+## Built By
+Aiham Alhawar — Applications Engineer | AgentCraft Founder
+🔗 linkedin.com/in/aihamalhawar
